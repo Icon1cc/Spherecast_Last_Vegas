@@ -1,5 +1,13 @@
 # Keep this file tracked
 !.gitignore
+
+# Environment files
 .env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+**/node_modules/
 
 

@@ -1,0 +1,15 @@
+{
+  "name": "supplywise-backend",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "db:migrate:sqlite-to-postgres": "node scripts/migrate-sqlite-to-postgres.mjs",
+    "db:migrate:sqlite-to-postgres:truncate": "node scripts/migrate-sqlite-to-postgres.mjs --truncate"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.10.0",
+    "dotenv": "^16.6.1",
+    "pg": "^8.16.3"
+  }
+}

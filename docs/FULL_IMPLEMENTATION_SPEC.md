@@ -6,7 +6,7 @@
 
 | Component | Technology |
 |-----------|------------|
-| Frontend | Lovable (React-based) |
+| Frontend | TypeScript and React |
 | Backend | Vercel Serverless Functions |
 | Database | PostgreSQL (Vercel Postgres) |
 | LLM | Google Gemini 2.5 Flash |
