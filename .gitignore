@@ -1,0 +1,19 @@
+# Ignore everything by default
+*
+
+# Keep this file tracked
+!.gitignore
+
+# Allow required folders and their contents
+!data/
+!data/**
+!challenge-info/
+!challenge-info/**
+!backend/
+!backend/**
+!frontend/
+!frontend/**
+
+# Explicitly ignore specific files even inside allowed folders
+backend/main.py
+frontend/LOVABLE_PROMPT.md
