@@ -36,22 +36,53 @@ export function resolveConnectionString() {
   );
 }
 
+function shouldRejectUnauthorized() {
+  const raw = process.env.POSTGRES_SSL_REJECT_UNAUTHORIZED?.trim().toLowerCase();
+  if (raw === "true") return true;
+  if (raw === "false") return false;
+  return false;
+}
+
+function normalizeConnectionString(connectionString, rejectUnauthorized) {
+  if (rejectUnauthorized) return connectionString;
+
+  try {
+    const url = new URL(connectionString);
+    // Remove SSL query options that can force strict verification in some providers.
+    url.searchParams.delete("sslmode");
+    url.searchParams.delete("sslcert");
+    url.searchParams.delete("sslkey");
+    url.searchParams.delete("sslrootcert");
+    return url.toString();
+  } catch {
+    return connectionString;
+  }
+}
+
 // Shared database pool creator for all API routes
 export function createPool() {
-  const connectionString = resolveConnectionString();
+  const resolvedConnectionString = resolveConnectionString();
+  const rejectUnauthorized = shouldRejectUnauthorized();
 
-  if (!connectionString) {
+  if (!resolvedConnectionString) {
     throw new Error(
       "Database connection string not found. Set POSTGRES_URL (recommended), DATABASE_URL, POSTGRES_URL_NON_POOLING, POSTGRES_PRISMA_URL, SUPABASE_DB_URL, or POSTGRES_HOST/POSTGRES_DATABASE/POSTGRES_USER/POSTGRES_PASSWORD."
     );
   }
 
-  // Disable SSL certificate verification for Supabase pooler
-  // This is required because Supabase uses a connection pooler with self-signed certs
+  const connectionString = normalizeConnectionString(
+    resolvedConnectionString,
+    rejectUnauthorized
+  );
+
+  if (!rejectUnauthorized) {
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+  }
+
   return new pg.Pool({
     connectionString,
     ssl: {
-      rejectUnauthorized: false,
+      rejectUnauthorized,
     },
     max: 5,
     idleTimeoutMillis: 30000,
