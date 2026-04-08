@@ -47,7 +47,6 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: "Gemini API key not configured" });
   }
 
-  let pool;
   try {
     const { message, history = [] } = req.body;
 
@@ -55,9 +54,17 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Message is required" });
     }
 
-    // Get database context
-    pool = createPool();
-    const dbContext = await getDbContext(pool);
+    // DB context is optional for chat quality; do not block chat if DB is unavailable.
+    let dbContext = null;
+    let pool;
+    try {
+      pool = createPool();
+      dbContext = await getDbContext(pool);
+    } catch (dbError) {
+      console.warn("Chat API DB context unavailable:", dbError);
+    } finally {
+      if (pool) await pool.end();
+    }
 
     // Build context-aware prompt
     let contextPrompt = SYSTEM_PROMPT;
@@ -97,7 +104,5 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error("Chat API error:", error);
     return res.status(500).json({ error: "Failed to process message" });
-  } finally {
-    if (pool) await pool.end();
   }
 }

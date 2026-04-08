@@ -1,5 +1,31 @@
 import { createPool } from "../../lib/db.js";
 
+function classifyDbError(error) {
+  const message = error instanceof Error ? error.message : String(error);
+
+  if (message.includes("Database connection string not found")) {
+    return {
+      status: 500,
+      body: {
+        error: "Database not configured",
+        details: "Set POSTGRES_URL in Vercel environment variables and redeploy.",
+      },
+    };
+  }
+
+  if (message.includes('relation "bom" does not exist') || message.includes('relation "bom_component" does not exist')) {
+    return {
+      status: 500,
+      body: {
+        error: "Database schema missing",
+        details: "Required tables are missing. Run postgres schema + migration on your Vercel Postgres DB.",
+      },
+    };
+  }
+
+  return null;
+}
+
 export default async function handler(req, res) {
   if (req.method !== "GET") {
     res.setHeader("Allow", "GET");
@@ -46,6 +72,10 @@ export default async function handler(req, res) {
     });
   } catch (error) {
     console.error("BOM API error:", error);
+    const classified = classifyDbError(error);
+    if (classified) {
+      return res.status(classified.status).json(classified.body);
+    }
     return res.status(500).json({ error: "Failed to fetch BOM" });
   } finally {
     if (pool) await pool.end();

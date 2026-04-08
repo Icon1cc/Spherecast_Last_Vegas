@@ -33,6 +33,25 @@ export interface ChatResponse {
   timestamp: string;
 }
 
+async function buildApiError(response: Response, fallbackMessage: string): Promise<Error> {
+  try {
+    const contentType = response.headers.get("content-type") || "";
+
+    if (contentType.includes("application/json")) {
+      const payload = await response.json();
+      const error = typeof payload?.error === "string" ? payload.error : "";
+      const details = typeof payload?.details === "string" ? payload.details : "";
+      const message = [error, details].filter(Boolean).join(": ").trim();
+      return new Error(message ? `${fallbackMessage}: ${message}` : fallbackMessage);
+    }
+
+    const text = (await response.text()).trim();
+    return new Error(text ? `${fallbackMessage}: ${text}` : fallbackMessage);
+  } catch {
+    return new Error(fallbackMessage);
+  }
+}
+
 // Fetch products with pagination and search
 export async function getProducts(
   page = 1,
@@ -47,7 +66,7 @@ export async function getProducts(
 
   const response = await fetch(`/api/products?${params}`);
   if (!response.ok) {
-    throw new Error("Failed to fetch products");
+    throw await buildApiError(response, "Failed to fetch products");
   }
   return response.json();
 }
@@ -56,7 +75,7 @@ export async function getProducts(
 export async function getProductBom(productId: number): Promise<BomResponse> {
   const response = await fetch(`/api/products/${productId}/bom`);
   if (!response.ok) {
-    throw new Error("Failed to fetch BOM");
+    throw await buildApiError(response, "Failed to fetch BOM");
   }
   return response.json();
 }
@@ -73,7 +92,7 @@ export async function sendChatMessage(
   });
 
   if (!response.ok) {
-    throw new Error("Failed to send message");
+    throw await buildApiError(response, "Failed to send message");
   }
   return response.json();
 }

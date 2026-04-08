@@ -5,6 +5,7 @@
   "installCommand": "cd api && npm install && cd ../frontend && npm install",
   "framework": null,
   "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/$1" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
