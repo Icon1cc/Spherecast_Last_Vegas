@@ -17,6 +17,10 @@ const ELEVENLABS_TTS_MODEL_ID =
   import.meta.env.VITE_ELEVENLABS_TTS_MODEL_ID?.trim() ?? "eleven_multilingual_v2";
 const ELEVENLABS_STT_MODEL_ID =
   import.meta.env.VITE_ELEVENLABS_STT_MODEL_ID?.trim() ?? "scribe_v1";
+const SILENCE_THRESHOLD = 0.025;
+const SILENCE_DURATION_MS = 900;
+const NO_SPEECH_TIMEOUT_MS = 6000;
+const MAX_RECORDING_MS = 20000;
 
 const createMessage = (role: ChatMessage["role"], content: string): ChatMessage => ({
   id: crypto.randomUUID(),
@@ -32,6 +36,28 @@ const createJarvisSession = (title: string): ChatSession => ({
   messages: [createMessage("assistant", JARVIS_GREETING)],
 });
 
+const buildAssistantReply = (userText: string): string => {
+  const normalizedText = userText.trim().toLowerCase();
+
+  if (/\b(hi|hey|hello|yo)\b/.test(normalizedText)) {
+    return "Hey, I am doing well and fully ready to help. Share the first step in your user journey.";
+  }
+
+  if (/how are you|how're you|how you doing/.test(normalizedText)) {
+    return "I am doing great. Tell me the first step in your user journey and I will map it with you.";
+  }
+
+  if (/\b(thanks|thank you)\b/.test(normalizedText)) {
+    return "You are welcome. What is the next step in the flow?";
+  }
+
+  if (/\b(journey|user flow|funnel|onboarding)\b/.test(normalizedText)) {
+    return "Perfect. Start from the trigger event, then tell me what the user sees, does, and the outcome.";
+  }
+
+  return `Got it. I noted: "${userText}". What happens right after this step?`;
+};
+
 const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
   const initialSessionRef = useRef<ChatSession>(createJarvisSession("Jarvis Session"));
   const [sessions, setSessions] = useState<ChatSession[]>([initialSessionRef.current]);
@@ -44,6 +70,14 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const audioPlaybackRef = useRef<HTMLAudioElement | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const analyserSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const monitorAnimationFrameRef = useRef<number | null>(null);
+  const silenceStartTimestampRef = useRef<number | null>(null);
+  const speechDetectedRef = useRef(false);
+  const noSpeechTimeoutRef = useRef<number | null>(null);
+  const maxRecordingTimeoutRef = useRef<number | null>(null);
   const greetedSessionIdsRef = useRef<Set<string>>(new Set());
 
   const activeSession = sessions.find((s) => s.id === activeSessionId);
@@ -70,6 +104,39 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
     URL.revokeObjectURL(audioPlaybackRef.current.src);
     audioPlaybackRef.current = null;
   }, []);
+
+  const clearRecordingTimeouts = useCallback(() => {
+    if (noSpeechTimeoutRef.current !== null) {
+      window.clearTimeout(noSpeechTimeoutRef.current);
+      noSpeechTimeoutRef.current = null;
+    }
+
+    if (maxRecordingTimeoutRef.current !== null) {
+      window.clearTimeout(maxRecordingTimeoutRef.current);
+      maxRecordingTimeoutRef.current = null;
+    }
+  }, []);
+
+  const stopVoiceMonitor = useCallback(() => {
+    if (monitorAnimationFrameRef.current !== null) {
+      window.cancelAnimationFrame(monitorAnimationFrameRef.current);
+      monitorAnimationFrameRef.current = null;
+    }
+
+    analyserSourceRef.current?.disconnect();
+    analyserRef.current?.disconnect();
+    analyserSourceRef.current = null;
+    analyserRef.current = null;
+
+    if (audioContextRef.current) {
+      void audioContextRef.current.close();
+      audioContextRef.current = null;
+    }
+
+    silenceStartTimestampRef.current = null;
+    speechDetectedRef.current = false;
+    clearRecordingTimeouts();
+  }, [clearRecordingTimeouts]);
 
   const speakText = useCallback(
     async (text: string) => {
@@ -131,6 +198,32 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
     return (data.text ?? data.transcript ?? "").trim();
   }, []);
 
+  const processUserMessage = useCallback(
+    (sessionId: string, userText: string) => {
+      const userMessage = createMessage("user", userText);
+      const assistantReply = buildAssistantReply(userText);
+      const assistantMessage = createMessage("assistant", assistantReply);
+
+      appendMessagesToSession(sessionId, [userMessage, assistantMessage]);
+      void speakText(assistantReply);
+    },
+    [appendMessagesToSession, speakText]
+  );
+
+  const stopListening = useCallback(() => {
+    clearRecordingTimeouts();
+    stopVoiceMonitor();
+
+    const recorder = mediaRecorderRef.current;
+    if (!recorder || recorder.state === "inactive") {
+      setIsListening(false);
+      return;
+    }
+
+    recorder.stop();
+    setIsListening(false);
+  }, [clearRecordingTimeouts, stopVoiceMonitor]);
+
   const startListening = useCallback(async () => {
     if (!activeSessionId) return;
 
@@ -149,6 +242,78 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
       const recorder = new MediaRecorder(stream);
       mediaRecorderRef.current = recorder;
       audioChunksRef.current = [];
+      silenceStartTimestampRef.current = null;
+      speechDetectedRef.current = false;
+
+      const stopRecordingFromMonitor = () => {
+        if (mediaRecorderRef.current?.state === "recording") {
+          stopListening();
+        }
+      };
+
+      const AudioContextClass =
+        window.AudioContext ||
+        (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+
+      if (AudioContextClass) {
+        const audioContext = new AudioContextClass();
+        const analyser = audioContext.createAnalyser();
+        const source = audioContext.createMediaStreamSource(stream);
+
+        analyser.fftSize = 2048;
+        analyser.smoothingTimeConstant = 0.2;
+        source.connect(analyser);
+
+        audioContextRef.current = audioContext;
+        analyserRef.current = analyser;
+        analyserSourceRef.current = source;
+
+        const waveform = new Uint8Array(analyser.fftSize);
+
+        const monitorAudio = (timestamp: number) => {
+          if (mediaRecorderRef.current?.state !== "recording") {
+            return;
+          }
+
+          analyser.getByteTimeDomainData(waveform);
+          let sum = 0;
+
+          for (const sample of waveform) {
+            const normalized = (sample - 128) / 128;
+            sum += normalized * normalized;
+          }
+
+          const rms = Math.sqrt(sum / waveform.length);
+
+          if (rms >= SILENCE_THRESHOLD) {
+            speechDetectedRef.current = true;
+            silenceStartTimestampRef.current = null;
+          } else if (speechDetectedRef.current) {
+            if (silenceStartTimestampRef.current === null) {
+              silenceStartTimestampRef.current = timestamp;
+            }
+
+            if (timestamp - silenceStartTimestampRef.current >= SILENCE_DURATION_MS) {
+              stopRecordingFromMonitor();
+              return;
+            }
+          }
+
+          monitorAnimationFrameRef.current = window.requestAnimationFrame(monitorAudio);
+        };
+
+        monitorAnimationFrameRef.current = window.requestAnimationFrame(monitorAudio);
+      }
+
+      noSpeechTimeoutRef.current = window.setTimeout(() => {
+        if (!speechDetectedRef.current) {
+          stopListening();
+        }
+      }, NO_SPEECH_TIMEOUT_MS);
+
+      maxRecordingTimeoutRef.current = window.setTimeout(() => {
+        stopListening();
+      }, MAX_RECORDING_MS);
 
       recorder.ondataavailable = (event: BlobEvent) => {
         if (event.data.size > 0) {
@@ -157,6 +322,7 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
       };
 
       recorder.onstop = async () => {
+        stopVoiceMonitor();
         stopMicrophoneTracks();
         mediaRecorderRef.current = null;
         setIsListening(false);
@@ -180,14 +346,7 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
             return;
           }
 
-          const userMessage = createMessage("user", transcript);
-          const aiResponse = createMessage(
-            "assistant",
-            `Thanks, I captured this part of your journey: "${transcript}". Please continue with the next step.`
-          );
-
-          appendMessagesToSession(recordingSessionId, [userMessage, aiResponse]);
-          void speakText(aiResponse.content);
+          processUserMessage(recordingSessionId, transcript);
         } catch (error) {
           console.error("Voice transcription failed", error);
           const errorDetail =
@@ -206,7 +365,7 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
         }
       };
 
-      recorder.start();
+      recorder.start(250);
       setIsListening(true);
     } catch (error) {
       console.error("Microphone access failed", error);
@@ -216,21 +375,19 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
           "I could not access your microphone. Please allow mic permission and try again."
         ),
       ]);
+      stopVoiceMonitor();
       stopMicrophoneTracks();
       setIsListening(false);
     }
-  }, [activeSessionId, appendMessagesToSession, speakText, stopMicrophoneTracks, transcribeAudio]);
-
-  const stopListening = useCallback(() => {
-    const recorder = mediaRecorderRef.current;
-    if (!recorder || recorder.state === "inactive") {
-      setIsListening(false);
-      return;
-    }
-
-    recorder.stop();
-    setIsListening(false);
-  }, []);
+  }, [
+    activeSessionId,
+    appendMessagesToSession,
+    processUserMessage,
+    stopListening,
+    stopMicrophoneTracks,
+    stopVoiceMonitor,
+    transcribeAudio,
+  ]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -268,10 +425,11 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
           mediaRecorderRef.current.stop();
         }
       }
+      stopVoiceMonitor();
       stopMicrophoneTracks();
       stopAudioPlayback();
     };
-  }, [stopAudioPlayback, stopMicrophoneTracks]);
+  }, [stopAudioPlayback, stopMicrophoneTracks, stopVoiceMonitor]);
 
   const sendMessage = useCallback(() => {
     const trimmedInput = input.trim();
@@ -280,10 +438,7 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
     }
 
     const userMessage = createMessage("user", trimmedInput);
-    const aiResponse = createMessage(
-      "assistant",
-      "Thanks for describing that. I am tracking your journey step by step. Please continue when ready."
-    );
+    const aiResponse = createMessage("assistant", buildAssistantReply(trimmedInput));
 
     appendMessagesToSession(activeSessionId, [userMessage, aiResponse]);
     void speakText(aiResponse.content);
@@ -427,6 +582,11 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
                     />
                   ))}
                 </div>
+              )}
+              {isListening && (
+                <span className="text-[11px] text-muted-foreground">
+                  Listening... I will send when you pause.
+                </span>
               )}
               {isVoiceProcessing && (
                 <span className="text-[11px] text-muted-foreground">Processing voice...</span>
