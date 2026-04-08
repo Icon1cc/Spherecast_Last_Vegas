@@ -24,7 +24,7 @@
 │     └─► Standardize raw material names and categorize them      │
 │                                                                 │
 │  2. SUBSTITUTION DETECTION                                      │
-│     └─► Find interchangeable components with confidence scores  │
+│     └─► Find interchangeable components with familiarity scores │
 │                                                                 │
 │  3. EXTERNAL DATA ENRICHMENT                                    │
 │     └─► Gather specs, compliance info, pricing from web         │
