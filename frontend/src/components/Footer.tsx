@@ -1,23 +1,32 @@
+import { Link } from "react-router-dom";
+
+const FOOTER_LINKS = [
+  { label: "About Us", href: "/about" },
+  { label: "Privacy Policy", href: "/privacy" },
+  { label: "Terms of Service", href: "/terms" },
+  { label: "Contact", href: "/contact" },
+] as const;
+
 const Footer = () => {
   const currentYear = new Date().getFullYear();
-  const links = ["About Us", "Privacy Policy", "Terms of Service", "Contact"];
 
   return (
-    <footer className="h-12 bg-header flex items-center px-6">
+    <footer className="h-12 bg-header flex items-center px-6 mt-auto">
       <div className="flex items-center justify-between w-full max-w-7xl mx-auto">
         <span className="text-header-foreground/70 text-xs">
-          © {currentYear} SupplyWise AI. All rights reserved.
+          &copy; {currentYear} SupplyWise AI. All rights reserved.
         </span>
-        <div className="flex items-center gap-4">
-          {links.map((link) => (
-            <button
-              key={link}
+        <nav className="flex items-center gap-4">
+          {FOOTER_LINKS.map(({ label, href }) => (
+            <Link
+              key={label}
+              to={href}
               className="text-header-foreground/60 hover:text-header-foreground hover:underline text-xs transition-colors"
             >
-              {link}
-            </button>
+              {label}
+            </Link>
           ))}
-        </div>
+        </nav>
       </div>
     </footer>
   );

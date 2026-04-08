@@ -1,4 +1,11 @@
 import { Link } from "react-router-dom";
+import { User, Mail, Info } from "lucide-react";
+
+const NAV_ITEMS = [
+  { label: "About Us", icon: Info, href: "/about" },
+  { label: "Contact", icon: Mail, href: "/contact" },
+  { label: "Profile", icon: User, href: "/profile" },
+] as const;
 
 const Header = () => {
   return (
@@ -12,14 +19,16 @@ const Header = () => {
             SupplyWise AI
           </span>
         </Link>
-        <nav className="flex items-center gap-6">
-          {["About Us", "Contact", "Profile"].map((item) => (
-            <button
-              key={item}
-              className="text-header-foreground/80 hover:text-header-foreground text-sm font-medium transition-colors"
+        <nav className="flex items-center gap-4">
+          {NAV_ITEMS.map(({ label, icon: Icon, href }) => (
+            <Link
+              key={label}
+              to={href}
+              className="flex items-center gap-1.5 text-header-foreground/80 hover:text-header-foreground text-sm font-medium transition-colors"
             >
-              {item}
-            </button>
+              <Icon className="w-4 h-4" />
+              <span className="hidden sm:inline">{label}</span>
+            </Link>
           ))}
         </nav>
       </div>

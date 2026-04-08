@@ -1,6 +1,15 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useSearchParams, Link } from "react-router-dom";
-import { Download, Save, ChevronRight } from "lucide-react";
+import {
+  Download,
+  Save,
+  ChevronRight,
+  DollarSign,
+  Star,
+  CheckCircle,
+  Link2,
+  Clock,
+} from "lucide-react";
 import {
   BarChart,
   Bar,
@@ -15,63 +24,91 @@ import {
   PolarRadiusAxis,
   Radar,
 } from "recharts";
+import { toast } from "sonner";
 import Layout from "@/components/Layout";
 import ChatIcon from "@/components/ChatIcon";
 import ChatPanel from "@/components/ChatPanel";
 import { generateAnalysis } from "@/data/sampleData";
-import { toast } from "sonner";
 
-const sliderLabels = [
-  { label: "Price Priority", icon: "💰" },
-  { label: "Quality Priority", icon: "⭐" },
-  { label: "Compliance Priority", icon: "✓" },
-  { label: "Supplier Consolidation", icon: "🔗" },
-  { label: "Lead Time Priority", icon: "⏱️" },
-];
+const SLIDER_CONFIG = [
+  { key: "price", label: "Price Priority", icon: DollarSign },
+  { key: "quality", label: "Quality Priority", icon: Star },
+  { key: "compliance", label: "Compliance Priority", icon: CheckCircle },
+  { key: "consolidation", label: "Supplier Consolidation", icon: Link2 },
+  { key: "leadTime", label: "Lead Time Priority", icon: Clock },
+] as const;
+
+const DEFAULT_SLIDER_VALUES = [5, 5, 5, 5, 5];
 
 const AnalysisPage = () => {
   const [searchParams] = useSearchParams();
-  const productName = searchParams.get("product") || "Product";
-  const materialName = searchParams.get("material") || "Material";
+  const productName = searchParams.get("product") ?? "Product";
+  const materialName = searchParams.get("material") ?? "Material";
 
-  const [sliders, setSliders] = useState([5, 5, 5, 5, 5]);
+  const [sliders, setSliders] = useState<number[]>(DEFAULT_SLIDER_VALUES);
   const [chatOpen, setChatOpen] = useState(false);
 
   const analysis = useMemo(() => generateAnalysis(sliders), [sliders]);
 
-  const barData = [
-    { name: analysis.recommendedSupplier.name, score: +(analysis.recommendedSupplier.score * 100).toFixed(0) },
-    ...analysis.alternatives.map((a) => ({
-      name: a.name,
-      score: +(a.score * 100).toFixed(0),
-    })),
-  ];
+  const barData = useMemo(
+    () => [
+      {
+        name: analysis.recommendedSupplier.name,
+        score: Math.round(analysis.recommendedSupplier.score * 100),
+      },
+      ...analysis.alternatives.map((alt) => ({
+        name: alt.name,
+        score: Math.round(alt.score * 100),
+      })),
+    ],
+    [analysis]
+  );
 
-  const radarData = [
-    { metric: "Price", value: analysis.metrics.price },
-    { metric: "Quality", value: analysis.metrics.quality },
-    { metric: "Compliance", value: analysis.metrics.compliance },
-    { metric: "Lead Time", value: analysis.metrics.leadTime },
-    { metric: "Consolidation", value: analysis.metrics.consolidation },
-  ];
+  const radarData = useMemo(
+    () => [
+      { metric: "Price", value: analysis.metrics.price },
+      { metric: "Quality", value: analysis.metrics.quality },
+      { metric: "Compliance", value: analysis.metrics.compliance },
+      { metric: "Lead Time", value: analysis.metrics.leadTime },
+      { metric: "Consolidation", value: analysis.metrics.consolidation },
+    ],
+    [analysis]
+  );
 
-  const updateSlider = (index: number, value: number) => {
+  const updateSlider = useCallback((index: number, value: number) => {
     setSliders((prev) => {
-      const next = [...prev];
-      next[index] = value;
-      return next;
+      const updated = [...prev];
+      updated[index] = value;
+      return updated;
     });
+  }, []);
+
+  const handleUpdateAnalysis = () => {
+    toast.success("Analysis updated with new parameters");
+  };
+
+  const handleDownloadPDF = () => {
+    toast.success("PDF download started");
+  };
+
+  const handleSaveToHistory = () => {
+    toast.success("Saved to history");
   };
 
   return (
     <Layout>
       <div className="max-w-5xl mx-auto px-4 py-8 animate-fade-in">
-        {/* Breadcrumb */}
-        <nav className="flex items-center gap-1 text-sm text-muted-foreground mb-6">
-          <Link to="/" className="hover:text-foreground transition-colors">Dashboard</Link>
-          <ChevronRight className="w-3 h-3" />
+        {/* Breadcrumb Navigation */}
+        <nav
+          className="flex items-center gap-1 text-sm text-muted-foreground mb-6"
+          aria-label="Breadcrumb"
+        >
+          <Link to="/" className="hover:text-foreground transition-colors">
+            Dashboard
+          </Link>
+          <ChevronRight className="w-3 h-3" aria-hidden="true" />
           <span>{productName}</span>
-          <ChevronRight className="w-3 h-3" />
+          <ChevronRight className="w-3 h-3" aria-hidden="true" />
           <span className="text-foreground font-medium">{materialName}</span>
         </nav>
 
@@ -80,7 +117,7 @@ const AnalysisPage = () => {
         </h1>
 
         {/* Recommendation Card */}
-        <div className="bg-card border rounded-lg shadow-sm p-6 mb-8">
+        <section className="bg-card border rounded-lg shadow-sm p-6 mb-8">
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">
             Recommended Supplier
           </h2>
@@ -92,32 +129,34 @@ const AnalysisPage = () => {
               </p>
             </div>
             <span className="shrink-0 inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-success/10 text-success">
-              {(analysis.recommendedSupplier.score * 100).toFixed(0)}% confidence
+              {Math.round(analysis.recommendedSupplier.score * 100)}% confidence
             </span>
           </div>
           <div className="border-t pt-4">
             <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
               Alternative Suppliers
             </h3>
-            <div className="space-y-2">
+            <ul className="space-y-2">
               {analysis.alternatives.map((alt) => (
-                <div key={alt.name} className="flex items-center justify-between text-sm">
+                <li key={alt.name} className="flex items-center justify-between text-sm">
                   <div>
                     <span className="font-medium">{alt.name}</span>
-                    <span className="text-muted-foreground ml-2 hidden sm:inline">— {alt.reasoning}</span>
+                    <span className="text-muted-foreground ml-2 hidden sm:inline">
+                      — {alt.reasoning}
+                    </span>
                   </div>
                   <span className="text-muted-foreground font-medium">
-                    {(alt.score * 100).toFixed(0)}%
+                    {Math.round(alt.score * 100)}%
                   </span>
-                </div>
+                </li>
               ))}
-            </div>
+            </ul>
           </div>
-        </div>
+        </section>
 
-        {/* Charts */}
+        {/* Charts Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          <div className="bg-card border rounded-lg shadow-sm p-6">
+          <section className="bg-card border rounded-lg shadow-sm p-6">
             <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">
               Supplier Comparison
             </h3>
@@ -130,8 +169,9 @@ const AnalysisPage = () => {
                 <Bar dataKey="score" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
-          </div>
-          <div className="bg-card border rounded-lg shadow-sm p-6">
+          </section>
+
+          <section className="bg-card border rounded-lg shadow-sm p-6">
             <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">
               Quality Metrics
             </h3>
@@ -148,54 +188,62 @@ const AnalysisPage = () => {
                 />
               </RadarChart>
             </ResponsiveContainer>
-          </div>
+          </section>
         </div>
 
-        {/* Sliders */}
-        <div className="bg-card border rounded-lg shadow-sm p-6 mb-8">
+        {/* Parameter Sliders */}
+        <section className="bg-card border rounded-lg shadow-sm p-6 mb-8">
           <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-6">
             Adjust Analysis Parameters
           </h3>
           <div className="space-y-5">
-            {sliderLabels.map((s, i) => (
-              <div key={s.label} className="flex items-center gap-4">
-                <span className="text-lg w-6 text-center">{s.icon}</span>
-                <span className="text-sm font-medium w-44 shrink-0">{s.label}</span>
+            {SLIDER_CONFIG.map(({ key, label, icon: Icon }, index) => (
+              <div key={key} className="flex items-center gap-4">
+                <Icon className="w-5 h-5 text-muted-foreground shrink-0" aria-hidden="true" />
+                <label htmlFor={`slider-${key}`} className="text-sm font-medium w-44 shrink-0">
+                  {label}
+                </label>
                 <input
+                  id={`slider-${key}`}
                   type="range"
                   min={1}
                   max={10}
-                  value={sliders[i]}
-                  onChange={(e) => updateSlider(i, parseInt(e.target.value))}
+                  value={sliders[index]}
+                  onChange={(e) => updateSlider(index, parseInt(e.target.value, 10))}
                   className="flex-1 h-2 accent-primary cursor-pointer"
+                  aria-valuemin={1}
+                  aria-valuemax={10}
+                  aria-valuenow={sliders[index]}
                 />
                 <span className="text-sm font-bold w-8 text-right tabular-nums">
-                  {sliders[i]}
+                  {sliders[index]}
                 </span>
               </div>
             ))}
           </div>
           <button
-            onClick={() => toast.success("Analysis updated with new parameters")}
+            onClick={handleUpdateAnalysis}
             className="mt-6 px-5 py-2.5 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors hover-lift"
           >
             Update Analysis
           </button>
-        </div>
+        </section>
 
-        {/* Actions */}
+        {/* Action Buttons */}
         <div className="flex justify-end gap-3">
           <button
-            onClick={() => toast.success("PDF download started")}
+            onClick={handleDownloadPDF}
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium border rounded-lg hover:bg-muted transition-colors hover-lift"
           >
-            <Download className="w-4 h-4" /> Download PDF
+            <Download className="w-4 h-4" aria-hidden="true" />
+            Download PDF
           </button>
           <button
-            onClick={() => toast.success("Saved to history")}
+            onClick={handleSaveToHistory}
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium border rounded-lg hover:bg-muted transition-colors hover-lift"
           >
-            <Save className="w-4 h-4" /> Save to History
+            <Save className="w-4 h-4" aria-hidden="true" />
+            Save to History
           </button>
         </div>
       </div>
