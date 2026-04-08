@@ -3,6 +3,7 @@ import { Buffer } from "node:buffer";
 const ELEVENLABS_BASE_URL = "https://api.elevenlabs.io/v1";
 const DEFAULT_VOICE_ID = "s3TPKV1kjDlVtZbl4Ksh";
 const DEFAULT_TTS_MODEL_ID = "eleven_multilingual_v2";
+const DEFAULT_OPTIMIZE_LATENCY = 3;
 
 async function readRawBody(req) {
   const chunks = [];
@@ -44,13 +45,20 @@ export default async function handler(req, res) {
       typeof payload.modelId === "string" && payload.modelId.trim()
         ? payload.modelId.trim()
         : DEFAULT_TTS_MODEL_ID;
+    const optimizeLatencyRaw = Number.parseInt(String(payload.optimizeLatency ?? ""), 10);
+    const optimizeLatency = Number.isNaN(optimizeLatencyRaw)
+      ? DEFAULT_OPTIMIZE_LATENCY
+      : Math.max(0, Math.min(4, optimizeLatencyRaw));
 
     if (!text) {
       res.status(400).json({ error: "text is required" });
       return;
     }
 
-    const upstream = await fetch(`${ELEVENLABS_BASE_URL}/text-to-speech/${voiceId}`, {
+    const ttsUrl = new URL(`${ELEVENLABS_BASE_URL}/text-to-speech/${voiceId}`);
+    ttsUrl.searchParams.set("optimize_streaming_latency", String(optimizeLatency));
+
+    const upstream = await fetch(ttsUrl.toString(), {
       method: "POST",
       headers: {
         Accept: "audio/mpeg",

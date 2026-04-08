@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { X, Send, Mic, MicOff, Plus } from "lucide-react";
+import { X, Send, Mic, MicOff, Plus, Volume2, VolumeX } from "lucide-react";
 import { format } from "date-fns";
 import type { ChatMessage, ChatSession } from "@/data/sampleData";
 import { sendChatMessage } from "@/lib/api";
@@ -18,10 +18,15 @@ const ELEVENLABS_TTS_MODEL_ID =
   import.meta.env.VITE_ELEVENLABS_TTS_MODEL_ID?.trim() ?? "eleven_multilingual_v2";
 const ELEVENLABS_STT_MODEL_ID =
   import.meta.env.VITE_ELEVENLABS_STT_MODEL_ID?.trim() ?? "scribe_v1";
-const SILENCE_THRESHOLD = 0.025;
+const BASE_SILENCE_THRESHOLD = 0.03;
+const MIN_DYNAMIC_SILENCE_THRESHOLD = 0.02;
+const MAX_DYNAMIC_SILENCE_THRESHOLD = 0.09;
+const SILENCE_THRESHOLD_MULTIPLIER = 2.2;
+const NOISE_CALIBRATION_MS = 700;
 const SILENCE_DURATION_MS = 900;
 const NO_SPEECH_TIMEOUT_MS = 6000;
 const MAX_RECORDING_MS = 20000;
+const TTS_CHUNK_MAX_CHARS = 180;
 
 const createMessage = (role: ChatMessage["role"], content: string): ChatMessage => ({
   id: crypto.randomUUID(),
@@ -47,6 +52,46 @@ const buildChatHistory = (messages: ChatMessage[]): Array<{ role: "user" | "assi
     }));
 };
 
+const normalizeTextForSpeech = (text: string): string =>
+  text
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/^\s*[-*]\s+/gm, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const splitTextForSpeech = (text: string, maxChars: number = TTS_CHUNK_MAX_CHARS): string[] => {
+  const normalized = normalizeTextForSpeech(text);
+  if (!normalized) return [];
+
+  const sentences =
+    normalized.match(/[^.!?]+[.!?]*/g)?.map((s) => s.trim()).filter(Boolean) ?? [normalized];
+
+  const chunks: string[] = [];
+  let current = "";
+
+  for (const sentence of sentences) {
+    if (!current) {
+      current = sentence;
+      continue;
+    }
+
+    const candidate = `${current} ${sentence}`.trim();
+    if (candidate.length <= maxChars) {
+      current = candidate;
+    } else {
+      chunks.push(current);
+      current = sentence;
+    }
+  }
+
+  if (current) chunks.push(current);
+  return chunks;
+};
+
 const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
   const initialSessionRef = useRef<ChatSession>(createJarvisSession("Jarvis Session"));
   const [sessions, setSessions] = useState<ChatSession[]>([initialSessionRef.current]);
@@ -54,6 +99,7 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
   const [input, setInput] = useState("");
   const [isListening, setIsListening] = useState(false);
   const [isVoiceProcessing, setIsVoiceProcessing] = useState(false);
+  const [isSpeakerEnabled, setIsSpeakerEnabled] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -68,9 +114,15 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
   const noSpeechTimeoutRef = useRef<number | null>(null);
   const maxRecordingTimeoutRef = useRef<number | null>(null);
   const greetedSessionsRef = useRef<Set<string>>(new Set());
+  const speakerEnabledRef = useRef(true);
+  const speechRequestIdRef = useRef(0);
 
   const activeSession = sessions.find((s) => s.id === activeSessionId);
   const messages = activeSession?.messages ?? [];
+
+  useEffect(() => {
+    speakerEnabledRef.current = isSpeakerEnabled;
+  }, [isSpeakerEnabled]);
 
   const appendMessagesToSession = useCallback((sessionId: string, newMessages: ChatMessage[]) => {
     setSessions((prev) =>
@@ -129,38 +181,75 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
 
   const speakText = useCallback(
     async (text: string) => {
+      if (!speakerEnabledRef.current) return;
+
       try {
         stopAudioPlayback();
 
-        const response = await fetch("/api/elevenlabs/tts", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            text,
-            voiceId: ELEVENLABS_VOICE_ID,
-            modelId: ELEVENLABS_TTS_MODEL_ID,
-          }),
-        });
+        const chunks = splitTextForSpeech(text);
+        if (chunks.length === 0) return;
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`TTS request failed: ${errorText}`);
-        }
+        const requestId = ++speechRequestIdRef.current;
 
-        const audioBlob = await response.blob();
-        const audioUrl = URL.createObjectURL(audioBlob);
-        const audio = new Audio(audioUrl);
-        audioPlaybackRef.current = audio;
-        audio.onended = () => {
-          URL.revokeObjectURL(audioUrl);
-          if (audioPlaybackRef.current === audio) {
-            audioPlaybackRef.current = null;
+        for (const chunk of chunks) {
+          if (!speakerEnabledRef.current || speechRequestIdRef.current !== requestId) {
+            return;
           }
-        };
 
-        await audio.play();
+          const response = await fetch("/api/elevenlabs/tts", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              text: chunk,
+              voiceId: ELEVENLABS_VOICE_ID,
+              modelId: ELEVENLABS_TTS_MODEL_ID,
+              optimizeLatency: 3,
+            }),
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`TTS request failed: ${errorText}`);
+          }
+
+          const audioBlob = await response.blob();
+          const audioUrl = URL.createObjectURL(audioBlob);
+          const audio = new Audio(audioUrl);
+          audioPlaybackRef.current = audio;
+
+          await new Promise<void>((resolve, reject) => {
+            const cleanup = () => {
+              audio.onended = null;
+              audio.onerror = null;
+              audio.onpause = null;
+              URL.revokeObjectURL(audioUrl);
+              if (audioPlaybackRef.current === audio) {
+                audioPlaybackRef.current = null;
+              }
+            };
+
+            audio.onended = () => {
+              cleanup();
+              resolve();
+            };
+            audio.onerror = () => {
+              cleanup();
+              reject(new Error("Audio playback failed"));
+            };
+            audio.onpause = () => {
+              // Treat manual stop/pause as a graceful cancellation.
+              cleanup();
+              resolve();
+            };
+
+            void audio.play().catch((error) => {
+              cleanup();
+              reject(error);
+            });
+          });
+        }
       } catch (error) {
         console.error("Unable to play ElevenLabs audio", error);
       }
@@ -245,7 +334,14 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
 
     try {
       const recordingSessionId = activeSessionId;
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 1,
+        },
+      });
       mediaStreamRef.current = stream;
 
       const recorder = new MediaRecorder(stream);
@@ -279,6 +375,9 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
 
         const waveform = new Uint8Array(analyser.fftSize);
 
+        const calibrationEndAt = performance.now() + NOISE_CALIBRATION_MS;
+        const calibrationSamples: number[] = [];
+
         const monitorAudio = (timestamp: number) => {
           if (mediaRecorderRef.current?.state !== "recording") {
             return;
@@ -293,8 +392,24 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
           }
 
           const rms = Math.sqrt(sum / waveform.length);
+          if (!speechDetectedRef.current && timestamp <= calibrationEndAt) {
+            calibrationSamples.push(rms);
+          }
 
-          if (rms >= SILENCE_THRESHOLD) {
+          const calibrationAverage =
+            calibrationSamples.length > 0
+              ? calibrationSamples.reduce((acc, value) => acc + value, 0) / calibrationSamples.length
+              : BASE_SILENCE_THRESHOLD;
+
+          const dynamicThreshold = Math.max(
+            MIN_DYNAMIC_SILENCE_THRESHOLD,
+            Math.min(
+              MAX_DYNAMIC_SILENCE_THRESHOLD,
+              Math.max(BASE_SILENCE_THRESHOLD, calibrationAverage * SILENCE_THRESHOLD_MULTIPLIER)
+            )
+          );
+
+          if (rms >= dynamicThreshold) {
             speechDetectedRef.current = true;
             silenceStartTimestampRef.current = null;
           } else if (speechDetectedRef.current) {
@@ -475,6 +590,17 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
     void startListening();
   }, [isListening, startListening, stopListening, activeSessionId, speakText]);
 
+  const toggleSpeaker = useCallback(() => {
+    setIsSpeakerEnabled((prev) => {
+      const next = !prev;
+      if (!next) {
+        speechRequestIdRef.current += 1;
+        stopAudioPlayback();
+      }
+      return next;
+    });
+  }, [stopAudioPlayback]);
+
   if (!open) return null;
 
   return (
@@ -576,6 +702,22 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
                 aria-label={isListening ? "Stop listening" : "Start voice input"}
               >
                 {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+              </button>
+              <button
+                onClick={toggleSpeaker}
+                className={`p-2 rounded-full transition-colors ${
+                  isSpeakerEnabled
+                    ? "bg-primary/10 text-primary hover:bg-primary/15"
+                    : "bg-muted text-muted-foreground hover:bg-muted/80"
+                }`}
+                aria-label={isSpeakerEnabled ? "Disable Jarvis voice" : "Enable Jarvis voice"}
+                title={isSpeakerEnabled ? "Jarvis voice enabled" : "Jarvis voice disabled"}
+              >
+                {isSpeakerEnabled ? (
+                  <Volume2 className="w-4 h-4" />
+                ) : (
+                  <VolumeX className="w-4 h-4" />
+                )}
               </button>
               {isListening && (
                 <div className="flex items-center gap-1" aria-label="Voice recording active">
