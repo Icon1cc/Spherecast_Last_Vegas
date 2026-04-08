@@ -11,7 +11,6 @@ interface ChatPanelProps {
 const APP_INITIALS = "JR";
 const JARVIS_GREETING = "Hello I am jarvis, how can I help you today";
 const DEFAULT_ELEVENLABS_VOICE_ID = "s3TPKV1kjDlVtZbl4Ksh";
-const ELEVENLABS_API_KEY = import.meta.env.VITE_ELEVENLABS_API_KEY?.trim() ?? "";
 const ELEVENLABS_VOICE_ID =
   import.meta.env.VITE_ELEVENLABS_VOICE_ID?.trim() ?? DEFAULT_ELEVENLABS_VOICE_ID;
 const ELEVENLABS_TTS_MODEL_ID =
@@ -74,30 +73,24 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
 
   const speakText = useCallback(
     async (text: string) => {
-      if (!ELEVENLABS_API_KEY) return;
-
       try {
         stopAudioPlayback();
 
-        const response = await fetch(
-          `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`,
-          {
-            method: "POST",
-            headers: {
-              Accept: "audio/mpeg",
-              "Content-Type": "application/json",
-              "xi-api-key": ELEVENLABS_API_KEY,
-            },
-            body: JSON.stringify({
-              text,
-              model_id: ELEVENLABS_TTS_MODEL_ID,
-            }),
-          }
-        );
+        const response = await fetch("/api/elevenlabs/tts", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            text,
+            voiceId: ELEVENLABS_VOICE_ID,
+            modelId: ELEVENLABS_TTS_MODEL_ID,
+          }),
+        });
 
         if (!response.ok) {
           const errorText = await response.text();
-          throw new Error(`ElevenLabs TTS failed: ${errorText}`);
+          throw new Error(`TTS request failed: ${errorText}`);
         }
 
         const audioBlob = await response.blob();
@@ -120,25 +113,18 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
   );
 
   const transcribeAudio = useCallback(async (audioBlob: Blob): Promise<string> => {
-    if (!ELEVENLABS_API_KEY) {
-      throw new Error("Missing ElevenLabs API key");
-    }
-
     const formData = new FormData();
     formData.append("file", audioBlob, "jarvis-user-journey.webm");
-    formData.append("model_id", ELEVENLABS_STT_MODEL_ID);
+    formData.append("modelId", ELEVENLABS_STT_MODEL_ID);
 
-    const response = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
+    const response = await fetch("/api/elevenlabs/stt", {
       method: "POST",
-      headers: {
-        "xi-api-key": ELEVENLABS_API_KEY,
-      },
       body: formData,
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`ElevenLabs STT failed: ${errorText}`);
+      throw new Error(`STT request failed: ${errorText}`);
     }
 
     const data = (await response.json()) as { text?: string; transcript?: string };
@@ -147,16 +133,6 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
 
   const startListening = useCallback(async () => {
     if (!activeSessionId) return;
-
-    if (!ELEVENLABS_API_KEY) {
-      appendMessagesToSession(activeSessionId, [
-        createMessage(
-          "assistant",
-          "I need VITE_ELEVENLABS_API_KEY in your .env file before I can process voice."
-        ),
-      ]);
-      return;
-    }
 
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
       appendMessagesToSession(activeSessionId, [
@@ -217,7 +193,7 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
           appendMessagesToSession(recordingSessionId, [
             createMessage(
               "assistant",
-              "I could not process that recording with ElevenLabs. Please try again."
+              "I could not process that recording. Check ELEVENLABS_API_KEY in your Vercel environment and redeploy, then try again."
             ),
           ]);
         } finally {
