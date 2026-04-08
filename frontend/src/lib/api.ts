@@ -73,7 +73,7 @@ export async function getProducts(
 
 // Fetch BOM components for a product
 export async function getProductBom(productId: number): Promise<BomResponse> {
-  const response = await fetch(`/api/products/${productId}/bom`);
+  const response = await fetch(`/api/products/bom?id=${productId}`);
   if (!response.ok) {
     throw await buildApiError(response, "Failed to fetch BOM");
   }

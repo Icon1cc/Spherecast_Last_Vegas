@@ -7,6 +7,7 @@ interface RawMaterialsModalProps {
   product: Product;
   materials: BomComponent[];
   isLoading?: boolean;
+  errorMessage?: string;
   onClose: () => void;
 }
 
@@ -14,6 +15,7 @@ const RawMaterialsModal = ({
   product,
   materials,
   isLoading,
+  errorMessage,
   onClose,
 }: RawMaterialsModalProps) => {
   const navigate = useNavigate();
@@ -69,6 +71,10 @@ const RawMaterialsModal = ({
             <div className="flex items-center justify-center py-8">
               <Loader2 className="w-5 h-5 animate-spin text-primary" />
               <span className="ml-2 text-muted-foreground">Loading materials...</span>
+            </div>
+          ) : errorMessage ? (
+            <div className="text-center py-8 text-destructive">
+              {errorMessage}
             </div>
           ) : materials.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">

@@ -28,7 +28,12 @@ const Dashboard = () => {
   });
 
   // Fetch BOM when product is selected
-  const { data: bomData, isLoading: isBomLoading } = useQuery({
+  const {
+    data: bomData,
+    isLoading: isBomLoading,
+    isError: isBomError,
+    error: bomError,
+  } = useQuery({
     queryKey: ["bom", selectedProduct?.id],
     queryFn: () => (selectedProduct ? getProductBom(selectedProduct.id) : null),
     enabled: !!selectedProduct,
@@ -63,6 +68,11 @@ const Dashboard = () => {
   const showChatIcon = !isModalOpen && !chatOpen;
 
   const materials: BomComponent[] = bomData?.components ?? [];
+  const bomErrorMessage = isBomError
+    ? bomError instanceof Error
+      ? bomError.message
+      : "Failed to load raw materials"
+    : undefined;
 
   return (
     <Layout>
@@ -148,7 +158,14 @@ const Dashboard = () => {
                         <td className="py-3 px-4 text-muted-foreground tabular-nums">
                           {serialNumber}
                         </td>
-                        <td className="py-3 px-4 font-medium">{product.name}</td>
+                        <td className="py-3 px-4 font-medium">
+                          <button
+                            onClick={() => handleProductSelect(product)}
+                            className="text-left hover:underline underline-offset-2"
+                          >
+                            {product.name}
+                          </button>
+                        </td>
                         <td className="py-3 px-4 text-muted-foreground hidden sm:table-cell">
                           {product.company}
                         </td>
@@ -199,6 +216,7 @@ const Dashboard = () => {
           product={selectedProduct}
           materials={materials}
           isLoading={isBomLoading}
+          errorMessage={bomErrorMessage}
           onClose={handleCloseModal}
         />
       )}

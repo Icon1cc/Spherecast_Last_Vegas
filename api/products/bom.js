@@ -21,7 +21,7 @@ function classifyDbError(error) {
     };
   }
 
-  if (message.includes('relation "product" does not exist') || message.includes('relation "company" does not exist')) {
+  if (message.includes('relation "bom" does not exist') || message.includes('relation "bom_component" does not exist')) {
     return {
       status: 500,
       body: {
@@ -40,65 +40,48 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
+  const { id } = req.query;
+  if (!id) {
+    return res.status(400).json({ error: "Product ID required" });
+  }
+
   let pool;
   try {
     pool = createPool();
 
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
-    const search = req.query.search || "";
-    const offset = (page - 1) * limit;
+    const bomResult = await pool.query(
+      `SELECT b.id as bom_id FROM bom b WHERE b.produced_product_id = $1`,
+      [id]
+    );
 
-    let countQuery = `
-      SELECT COUNT(*) as total
-      FROM product p
-      JOIN company c ON p.company_id = c.id
-      WHERE p.type = 'finished-good'
-    `;
-
-    let dataQuery = `
-      SELECT p.id, p.sku as name, p.type, c.name as company
-      FROM product p
-      JOIN company c ON p.company_id = c.id
-      WHERE p.type = 'finished-good'
-    `;
-
-    const params = [];
-
-    if (search) {
-      const searchCondition = ` AND (p.sku ILIKE $1 OR c.name ILIKE $1)`;
-      countQuery += searchCondition;
-      dataQuery += searchCondition;
-      params.push(`%${search}%`);
+    if (bomResult.rows.length === 0) {
+      return res.status(200).json({ components: [] });
     }
 
-    dataQuery += ` ORDER BY c.name, p.sku LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
-
-    const [countResult, productsResult] = await Promise.all([
-      pool.query(countQuery, params),
-      pool.query(dataQuery, [...params, limit, offset]),
-    ]);
-
-    const total = parseInt(countResult.rows[0]?.total || "0");
+    const bomId = bomResult.rows[0].bom_id;
+    const componentsResult = await pool.query(
+      `SELECT p.id, p.sku as name,
+              CASE WHEN p.type = 'raw-material' THEN 'Raw Material' ELSE 'Component' END as category
+       FROM bom_component bc
+       JOIN product p ON bc.consumed_product_id = p.id
+       WHERE bc.bom_id = $1
+       ORDER BY p.sku`,
+      [bomId]
+    );
 
     res.setHeader("Cache-Control", "s-maxage=60, stale-while-revalidate");
     return res.status(200).json({
-      products: productsResult.rows,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
+      bomId,
+      components: componentsResult.rows,
     });
   } catch (error) {
-    console.error("Products API error:", error);
+    console.error("BOM API error:", error);
     const classified = classifyDbError(error);
     if (classified) {
       return res.status(classified.status).json(classified.body);
     }
     return res.status(500).json({
-      error: "Failed to fetch products",
+      error: "Failed to fetch BOM",
       details: sanitizeErrorMessage(error instanceof Error ? error.message : String(error)),
     });
   } finally {

@@ -1,5 +1,13 @@
 import { createPool } from "../../lib/db.js";
 
+function sanitizeErrorMessage(message) {
+  if (!message) return "Unknown error";
+  return String(message)
+    .replace(/(postgres(ql)?:\/\/)([^@]+)@/gi, "$1***@")
+    .replace(/\s+/g, " ")
+    .slice(0, 240);
+}
+
 function classifyDbError(error) {
   const message = error instanceof Error ? error.message : String(error);
 
@@ -76,7 +84,10 @@ export default async function handler(req, res) {
     if (classified) {
       return res.status(classified.status).json(classified.body);
     }
-    return res.status(500).json({ error: "Failed to fetch BOM" });
+    return res.status(500).json({
+      error: "Failed to fetch BOM",
+      details: sanitizeErrorMessage(error instanceof Error ? error.message : String(error)),
+    });
   } finally {
     if (pool) await pool.end();
   }
