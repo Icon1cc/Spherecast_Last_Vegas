@@ -1,6 +1,6 @@
 # SupplyWise AI - Agnes Raw Material Intelligence
 
-An AI-powered supply chain decision-support system for CPG (Consumer Packaged Goods) companies, built for the **Spherecast Q-Hack Hackathon**.
+An AI-powered supply chain decision-support system for CPG (Consumer Packaged Goods) companies, built for the **Q-Hack Hackathon**.
 
 ## Challenge Overview
 
