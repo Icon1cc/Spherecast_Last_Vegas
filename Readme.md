@@ -1,8 +1,7 @@
-  Next Steps for the hackathon:                                                                                                                                                                           
-                                                                                                                                                                                                        
+  Next Steps for hackathon:                                                                                                                                                                          
   1. Backend API - Connect to real PostgreSQL database with Gemini AI integration                                                                                                                         
   2. ElevenLabs Voice - Integrate two-way voice conversation                                                                                                                                            
   3. PDF Export - Implement actual PDF generation                                                                                                                                                         
   4. Chat Persistence - Save chat history to database                                                                                                                                                     
-  5. Real Data - Connect to the actual product/supplier data from db.sqlite                                                                                                                               
+  5. Real Data - Connect to the actual product/supplier data from db sqlite                                                                                                                               
                                                                                                                                                                           
