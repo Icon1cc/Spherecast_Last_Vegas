@@ -115,7 +115,7 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
   const transcribeAudio = useCallback(async (audioBlob: Blob): Promise<string> => {
     const formData = new FormData();
     formData.append("file", audioBlob, "jarvis-user-journey.webm");
-    formData.append("modelId", ELEVENLABS_STT_MODEL_ID);
+    formData.append("model_id", ELEVENLABS_STT_MODEL_ID);
 
     const response = await fetch("/api/elevenlabs/stt", {
       method: "POST",
@@ -190,10 +190,14 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
           void speakText(aiResponse.content);
         } catch (error) {
           console.error("Voice transcription failed", error);
+          const errorDetail =
+            error instanceof Error && error.message
+              ? error.message
+              : "Voice transcription failed";
           appendMessagesToSession(recordingSessionId, [
             createMessage(
               "assistant",
-              "I could not process that recording. Check ELEVENLABS_API_KEY in your Vercel environment and redeploy, then try again."
+              `I could not process that recording. ${errorDetail}`
             ),
           ]);
         } finally {
