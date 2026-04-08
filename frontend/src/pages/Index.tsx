@@ -1,11 +1,11 @@
 import { useState, useCallback } from "react";
-import { Search } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Search, Loader2, AlertCircle } from "lucide-react";
 import Layout from "@/components/Layout";
 import ChatIcon from "@/components/ChatIcon";
 import ChatPanel from "@/components/ChatPanel";
 import RawMaterialsModal from "@/components/RawMaterialsModal";
-import { sampleProducts, getRawMaterials } from "@/data/sampleData";
-import type { Product } from "@/data/sampleData";
+import { getProducts, getProductBom, type Product, type BomComponent } from "@/lib/api";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -15,17 +15,28 @@ const Dashboard = () => {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
 
-  const filteredProducts = sampleProducts.filter(
-    (product) =>
-      product.name.toLowerCase().includes(search.toLowerCase()) ||
-      product.company.toLowerCase().includes(search.toLowerCase())
-  );
+  // Fetch products from API
+  const {
+    data: productsData,
+    isLoading,
+    isError,
+    error,
+  } = useQuery({
+    queryKey: ["products", page, search],
+    queryFn: () => getProducts(page, ITEMS_PER_PAGE, search),
+    staleTime: 30000,
+  });
 
-  const totalPages = Math.ceil(filteredProducts.length / ITEMS_PER_PAGE);
-  const paginatedProducts = filteredProducts.slice(
-    (page - 1) * ITEMS_PER_PAGE,
-    page * ITEMS_PER_PAGE
-  );
+  // Fetch BOM when product is selected
+  const { data: bomData, isLoading: isBomLoading } = useQuery({
+    queryKey: ["bom", selectedProduct?.id],
+    queryFn: () => (selectedProduct ? getProductBom(selectedProduct.id) : null),
+    enabled: !!selectedProduct,
+  });
+
+  const products = productsData?.products ?? [];
+  const totalPages = productsData?.pagination.totalPages ?? 1;
+  const total = productsData?.pagination.total ?? 0;
 
   const handleSearchChange = useCallback((value: string) => {
     setSearch(value);
@@ -51,10 +62,17 @@ const Dashboard = () => {
   const isModalOpen = selectedProduct !== null;
   const showChatIcon = !isModalOpen && !chatOpen;
 
+  const materials: BomComponent[] = bomData?.components ?? [];
+
   return (
     <Layout>
       <main className="max-w-5xl mx-auto px-4 py-8 animate-fade-in">
-        <h1 className="text-2xl font-bold tracking-tight mb-6">Product Dashboard</h1>
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl font-bold tracking-tight">Product Dashboard</h1>
+          {!isLoading && (
+            <span className="text-sm text-muted-foreground">{total} products</span>
+          )}
+        </div>
 
         {/* Search Input */}
         <div className="relative mb-4">
@@ -72,90 +90,105 @@ const Dashboard = () => {
           />
         </div>
 
-        {/* Products Table */}
-        <div className="bg-card rounded-lg shadow-sm border overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-muted/50">
-                <th className="text-left py-3 px-4 font-semibold text-muted-foreground w-12">
-                  #
-                </th>
-                <th className="text-left py-3 px-4 font-semibold text-muted-foreground">
-                  Product Name
-                </th>
-                <th className="text-left py-3 px-4 font-semibold text-muted-foreground hidden sm:table-cell">
-                  Company
-                </th>
-                <th className="text-center py-3 px-4 font-semibold text-muted-foreground w-24">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {paginatedProducts.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="py-12 text-center text-muted-foreground">
-                    No products found.
-                  </td>
-                </tr>
-              ) : (
-                paginatedProducts.map((product, index) => {
-                  const serialNumber = (page - 1) * ITEMS_PER_PAGE + index + 1;
-                  const isOddRow = index % 2 === 1;
+        {/* Error State */}
+        {isError && (
+          <div className="bg-destructive/10 text-destructive rounded-lg p-4 mb-4 flex items-center gap-2">
+            <AlertCircle className="w-5 h-5 shrink-0" />
+            <span>{error instanceof Error ? error.message : "Failed to load products"}</span>
+          </div>
+        )}
 
-                  return (
-                    <tr
-                      key={product.id}
-                      className={`border-b last:border-0 transition-colors hover:bg-muted/30 ${
-                        isOddRow ? "bg-muted/20" : ""
-                      }`}
-                    >
-                      <td className="py-3 px-4 text-muted-foreground tabular-nums">
-                        {serialNumber}
-                      </td>
-                      <td className="py-3 px-4 font-medium">{product.name}</td>
-                      <td className="py-3 px-4 text-muted-foreground hidden sm:table-cell">
-                        {product.company}
-                      </td>
-                      <td className="py-3 px-4 text-center">
-                        <button
-                          onClick={() => handleProductSelect(product)}
-                          className="px-3 py-1 text-xs font-medium border rounded hover:bg-muted transition-colors hover-lift"
-                        >
-                          View
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+        {/* Loading State */}
+        {isLoading && (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-6 h-6 animate-spin text-primary" />
+            <span className="ml-2 text-muted-foreground">Loading products...</span>
+          </div>
+        )}
+
+        {/* Products Table */}
+        {!isLoading && (
+          <div className="bg-card rounded-lg shadow-sm border overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-muted/50">
+                  <th className="text-left py-3 px-4 font-semibold text-muted-foreground w-12">
+                    #
+                  </th>
+                  <th className="text-left py-3 px-4 font-semibold text-muted-foreground">
+                    Product Name
+                  </th>
+                  <th className="text-left py-3 px-4 font-semibold text-muted-foreground hidden sm:table-cell">
+                    Company
+                  </th>
+                  <th className="text-center py-3 px-4 font-semibold text-muted-foreground w-24">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {products.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="py-12 text-center text-muted-foreground">
+                      No products found.
+                    </td>
+                  </tr>
+                ) : (
+                  products.map((product, index) => {
+                    const serialNumber = (page - 1) * ITEMS_PER_PAGE + index + 1;
+                    const isOddRow = index % 2 === 1;
+
+                    return (
+                      <tr
+                        key={product.id}
+                        className={`border-b last:border-0 transition-colors hover:bg-muted/30 ${
+                          isOddRow ? "bg-muted/20" : ""
+                        }`}
+                      >
+                        <td className="py-3 px-4 text-muted-foreground tabular-nums">
+                          {serialNumber}
+                        </td>
+                        <td className="py-3 px-4 font-medium">{product.name}</td>
+                        <td className="py-3 px-4 text-muted-foreground hidden sm:table-cell">
+                          {product.company}
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <button
+                            onClick={() => handleProductSelect(product)}
+                            className="px-3 py-1 text-xs font-medium border rounded hover:bg-muted transition-colors hover-lift"
+                          >
+                            View
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         {/* Pagination */}
         {totalPages > 1 && (
           <nav className="flex items-center justify-center gap-2 mt-4" aria-label="Pagination">
-            {Array.from({ length: totalPages }, (_, i) => {
-              const pageNumber = i + 1;
-              const isActive = page === pageNumber;
-
-              return (
-                <button
-                  key={pageNumber}
-                  onClick={() => setPage(pageNumber)}
-                  className={`w-8 h-8 rounded text-sm font-medium transition-colors ${
-                    isActive
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted text-muted-foreground hover:bg-muted/80"
-                  }`}
-                  aria-current={isActive ? "page" : undefined}
-                  aria-label={`Page ${pageNumber}`}
-                >
-                  {pageNumber}
-                </button>
-              );
-            })}
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="px-3 py-1 text-sm border rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-muted"
+            >
+              Prev
+            </button>
+            <span className="text-sm text-muted-foreground">
+              Page {page} of {totalPages}
+            </span>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="px-3 py-1 text-sm border rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-muted"
+            >
+              Next
+            </button>
           </nav>
         )}
       </main>
@@ -164,7 +197,8 @@ const Dashboard = () => {
       {isModalOpen && (
         <RawMaterialsModal
           product={selectedProduct}
-          materials={getRawMaterials(selectedProduct.id)}
+          materials={materials}
+          isLoading={isBomLoading}
           onClose={handleCloseModal}
         />
       )}

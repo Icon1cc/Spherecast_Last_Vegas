@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { X, Send, Mic, MicOff, Plus } from "lucide-react";
 import { format } from "date-fns";
 import type { ChatMessage, ChatSession } from "@/data/sampleData";
+import { sendChatMessage } from "@/lib/api";
 
 interface ChatPanelProps {
   open: boolean;
@@ -36,26 +37,14 @@ const createJarvisSession = (title: string): ChatSession => ({
   messages: [createMessage("assistant", JARVIS_GREETING)],
 });
 
-const buildAssistantReply = (userText: string): string => {
-  const normalizedText = userText.trim().toLowerCase();
-
-  if (/\b(hi|hey|hello|yo)\b/.test(normalizedText)) {
-    return "Hey, I am doing well and fully ready to help. Share the first step in your user journey.";
-  }
-
-  if (/how are you|how're you|how you doing/.test(normalizedText)) {
-    return "I am doing great. Tell me the first step in your user journey and I will map it with you.";
-  }
-
-  if (/\b(thanks|thank you)\b/.test(normalizedText)) {
-    return "You are welcome. What is the next step in the flow?";
-  }
-
-  if (/\b(journey|user flow|funnel|onboarding)\b/.test(normalizedText)) {
-    return "Perfect. Start from the trigger event, then tell me what the user sees, does, and the outcome.";
-  }
-
-  return `Got it. I noted: "${userText}". What happens right after this step?`;
+// Build chat history for API calls
+const buildChatHistory = (messages: ChatMessage[]): Array<{ role: "user" | "assistant"; content: string }> => {
+  return messages
+    .filter((msg) => msg.content !== JARVIS_GREETING)
+    .map((msg) => ({
+      role: msg.role as "user" | "assistant",
+      content: msg.content,
+    }));
 };
 
 const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
@@ -78,7 +67,6 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
   const speechDetectedRef = useRef(false);
   const noSpeechTimeoutRef = useRef<number | null>(null);
   const maxRecordingTimeoutRef = useRef<number | null>(null);
-  const greetedSessionIdsRef = useRef<Set<string>>(new Set());
 
   const activeSession = sessions.find((s) => s.id === activeSessionId);
   const messages = activeSession?.messages ?? [];
@@ -199,15 +187,35 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
   }, []);
 
   const processUserMessage = useCallback(
-    (sessionId: string, userText: string) => {
+    async (sessionId: string, userText: string, speakResponse: boolean = false) => {
       const userMessage = createMessage("user", userText);
-      const assistantReply = buildAssistantReply(userText);
-      const assistantMessage = createMessage("assistant", assistantReply);
+      appendMessagesToSession(sessionId, [userMessage]);
 
-      appendMessagesToSession(sessionId, [userMessage, assistantMessage]);
-      void speakText(assistantReply);
+      try {
+        const currentSession = sessions.find((s) => s.id === sessionId);
+        const history = currentSession ? buildChatHistory(currentSession.messages) : [];
+
+        const response = await sendChatMessage(userText, history);
+        const assistantMessage = createMessage("assistant", response.response);
+        appendMessagesToSession(sessionId, [assistantMessage]);
+
+        // Only speak if this was a voice interaction
+        if (speakResponse) {
+          void speakText(response.response);
+        }
+      } catch (error) {
+        console.error("Failed to get AI response:", error);
+        const errorMessage = createMessage(
+          "assistant",
+          "I encountered an error processing your request. Please try again."
+        );
+        appendMessagesToSession(sessionId, [errorMessage]);
+        if (speakResponse) {
+          void speakText(errorMessage.content);
+        }
+      }
     },
-    [appendMessagesToSession, speakText]
+    [appendMessagesToSession, sessions, speakText]
   );
 
   const stopListening = useCallback(() => {
@@ -346,7 +354,7 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
             return;
           }
 
-          processUserMessage(recordingSessionId, transcript);
+          processUserMessage(recordingSessionId, transcript, true);
         } catch (error) {
           console.error("Voice transcription failed", error);
           const errorDetail =
@@ -403,12 +411,8 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
     if (!hasGreeting) {
       appendMessagesToSession(activeSession.id, [createMessage("assistant", JARVIS_GREETING)]);
     }
-
-    if (!greetedSessionIdsRef.current.has(activeSession.id)) {
-      greetedSessionIdsRef.current.add(activeSession.id);
-      void speakText(JARVIS_GREETING);
-    }
-  }, [open, activeSession, appendMessagesToSession, speakText]);
+    // Voice greeting removed - Jarvis only speaks after mic interaction
+  }, [open, activeSession, appendMessagesToSession]);
 
   useEffect(() => {
     if (!open && isListening) {
@@ -431,19 +435,16 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
     };
   }, [stopAudioPlayback, stopMicrophoneTracks, stopVoiceMonitor]);
 
-  const sendMessage = useCallback(() => {
+  const sendMessage = useCallback(async () => {
     const trimmedInput = input.trim();
     if (!trimmedInput || !activeSession) {
       return;
     }
 
-    const userMessage = createMessage("user", trimmedInput);
-    const aiResponse = createMessage("assistant", buildAssistantReply(trimmedInput));
-
-    appendMessagesToSession(activeSessionId, [userMessage, aiResponse]);
-    void speakText(aiResponse.content);
     setInput("");
-  }, [input, activeSession, appendMessagesToSession, activeSessionId, speakText]);
+    // Don't speak response for text input - only for voice
+    await processUserMessage(activeSessionId, trimmedInput, false);
+  }, [input, activeSession, processUserMessage, activeSessionId]);
 
   const createNewChat = useCallback(() => {
     const newSession = createJarvisSession("New Chat");

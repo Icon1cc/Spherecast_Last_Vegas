@@ -1,19 +1,25 @@
 import { useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { X } from "lucide-react";
-import type { Product, RawMaterial } from "@/data/sampleData";
+import { X, Loader2 } from "lucide-react";
+import type { Product, BomComponent } from "@/lib/api";
 
 interface RawMaterialsModalProps {
   product: Product;
-  materials: RawMaterial[];
+  materials: BomComponent[];
+  isLoading?: boolean;
   onClose: () => void;
 }
 
-const RawMaterialsModal = ({ product, materials, onClose }: RawMaterialsModalProps) => {
+const RawMaterialsModal = ({
+  product,
+  materials,
+  isLoading,
+  onClose,
+}: RawMaterialsModalProps) => {
   const navigate = useNavigate();
 
   const handleAnalysis = useCallback(
-    (material: RawMaterial) => {
+    (material: BomComponent) => {
       onClose();
       const params = new URLSearchParams({
         product: product.name,
@@ -59,42 +65,50 @@ const RawMaterialsModal = ({ product, materials, onClose }: RawMaterialsModalPro
           </button>
         </header>
         <div className="p-5">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b">
-                <th className="text-left py-2 px-3 font-semibold text-muted-foreground w-12">
-                  #
-                </th>
-                <th className="text-left py-2 px-3 font-semibold text-muted-foreground">
-                  Raw Material
-                </th>
-                <th className="text-center py-2 px-3 font-semibold text-muted-foreground w-28">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {materials.map((material, index) => (
-                <tr
-                  key={material.id}
-                  className={index % 2 === 1 ? "bg-muted/50" : ""}
-                >
-                  <td className="py-2.5 px-3 text-muted-foreground tabular-nums">
-                    {index + 1}
-                  </td>
-                  <td className="py-2.5 px-3 font-medium">{material.name}</td>
-                  <td className="py-2.5 px-3 text-center">
-                    <button
-                      onClick={() => handleAnalysis(material)}
-                      className="px-3 py-1 text-xs font-medium bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors hover-lift"
-                    >
-                      Analysis
-                    </button>
-                  </td>
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-5 h-5 animate-spin text-primary" />
+              <span className="ml-2 text-muted-foreground">Loading materials...</span>
+            </div>
+          ) : materials.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              No raw materials found for this product.
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left py-2 px-3 font-semibold text-muted-foreground w-12">
+                    #
+                  </th>
+                  <th className="text-left py-2 px-3 font-semibold text-muted-foreground">
+                    Raw Material
+                  </th>
+                  <th className="text-center py-2 px-3 font-semibold text-muted-foreground w-28">
+                    Actions
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {materials.map((material, index) => (
+                  <tr key={material.id} className={index % 2 === 1 ? "bg-muted/50" : ""}>
+                    <td className="py-2.5 px-3 text-muted-foreground tabular-nums">
+                      {index + 1}
+                    </td>
+                    <td className="py-2.5 px-3 font-medium">{material.name}</td>
+                    <td className="py-2.5 px-3 text-center">
+                      <button
+                        onClick={() => handleAnalysis(material)}
+                        className="px-3 py-1 text-xs font-medium bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors hover-lift"
+                      >
+                        Analysis
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
     </div>
