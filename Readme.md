@@ -17,7 +17,7 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:8080 in your browser.
+Open http://localhost:8080 in your browser to check the running application.
 
 ## Tech Stack
 
