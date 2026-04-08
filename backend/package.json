@@ -4,8 +4,8 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "db:migrate:sqlite-to-postgres": "node scripts/migrate-sqlite-to-postgres.mjs",
-    "db:migrate:sqlite-to-postgres:truncate": "node scripts/migrate-sqlite-to-postgres.mjs --truncate"
+    "db:migrate": "node scripts/migrate-sqlite-to-postgres.mjs",
+    "db:migrate:truncate": "node scripts/migrate-sqlite-to-postgres.mjs --truncate"
   },
   "dependencies": {
     "better-sqlite3": "^11.10.0",

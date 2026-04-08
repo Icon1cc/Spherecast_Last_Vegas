@@ -67,6 +67,7 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
   const speechDetectedRef = useRef(false);
   const noSpeechTimeoutRef = useRef<number | null>(null);
   const maxRecordingTimeoutRef = useRef<number | null>(null);
+  const greetedSessionsRef = useRef<Set<string>>(new Set());
 
   const activeSession = sessions.find((s) => s.id === activeSessionId);
   const messages = activeSession?.messages ?? [];
@@ -459,14 +460,20 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
     }
   };
 
-  const toggleVoice = useCallback(() => {
+  const toggleVoice = useCallback(async () => {
     if (isListening) {
       stopListening();
       return;
     }
 
+    // Speak greeting on first mic click for this session
+    if (activeSessionId && !greetedSessionsRef.current.has(activeSessionId)) {
+      greetedSessionsRef.current.add(activeSessionId);
+      await speakText(JARVIS_GREETING);
+    }
+
     void startListening();
-  }, [isListening, startListening, stopListening]);
+  }, [isListening, startListening, stopListening, activeSessionId, speakText]);
 
   if (!open) return null;
 

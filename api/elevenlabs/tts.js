@@ -26,8 +26,14 @@ export default async function handler(req, res) {
   }
 
   try {
-    const rawBody = await readRawBody(req);
-    const payload = JSON.parse(rawBody.toString("utf-8"));
+    // Support both pre-parsed body (Express) and raw body (Vercel)
+    let payload;
+    if (req.body && typeof req.body === "object") {
+      payload = req.body;
+    } else {
+      const rawBody = await readRawBody(req);
+      payload = JSON.parse(rawBody.toString("utf-8"));
+    }
 
     const text = typeof payload.text === "string" ? payload.text.trim() : "";
     const voiceId =

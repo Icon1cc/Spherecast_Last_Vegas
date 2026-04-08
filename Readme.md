@@ -9,15 +9,9 @@ Give Spherecast's AI Supply Chain Manager **"Agnes"** raw material superpowers:
 - Determine **quality and compliance standards** for replacements
 - Recommend **best sourcing options** with clear reasoning
 
-## Quick Start
+## Deployment
 
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-Open http://localhost:8080 in your browser to check the running application.
+This app is deployed on **Vercel**. Push to main branch to deploy automatically.
 
 ## Tech Stack
 
@@ -25,9 +19,9 @@ Open http://localhost:8080 in your browser to check the running application.
 |-----------|------------|
 | Frontend | React 18 + TypeScript + Vite |
 | UI Components | Radix UI + Tailwind CSS |
-| Backend | Vercel Serverless Functions (Express for local dev) |
+| Backend | Vercel Serverless Functions |
 | Database | PostgreSQL (Supabase) |
-| AI/LLM | Google Gemini 1.5 Flash |
+| AI/LLM | Google Gemini 2.5 Flash |
 | Voice | ElevenLabs TTS + STT |
 | Charts | Recharts |
 
@@ -59,7 +53,8 @@ Open http://localhost:8080 in your browser to check the running application.
 - Two-way voice conversation using ElevenLabs
 - Speech-to-Text (STT) with scribe_v1 model
 - Text-to-Speech (TTS) with multilingual v2
-- Auto-stop recording on silence detection
+- Auto-stop recording on silence detection (900ms)
+- Greeting spoken on first mic click per session
 - Gemini-powered AI responses
 - Chat history with multiple sessions
 
@@ -87,14 +82,23 @@ supplier (40) ── supplier_product (1,633)
 
 ```
 .
-├── frontend/
-│   ├── api/                    # Vercel serverless functions
-│   │   ├── elevenlabs/         # TTS + STT endpoints
-│   │   ├── chat/               # Gemini chat API
-│   │   ├── products/           # Product + BOM queries
-│   │   └── analysis/           # Supplier analysis
+├── api/                        # Vercel serverless functions
+│   ├── lib/
+│   │   └── db.js               # Shared database connection
+│   ├── elevenlabs/
+│   │   ├── tts.js              # Text-to-speech
+│   │   └── stt.js              # Speech-to-text
+│   ├── chat/
+│   │   └── message.js          # Gemini chat API
+│   ├── products/
+│   │   ├── index.js            # List products
+│   │   └── [id]/
+│   │       └── bom.js          # Get BOM components
+│   └── analysis/
+│       └── component.js        # Supplier analysis
+├── frontend/                   # React application
 │   ├── src/
-│   │   ├── components/         # React components
+│   │   ├── components/
 │   │   │   ├── ChatPanel.tsx   # Voice chat interface
 │   │   │   ├── ChatIcon.tsx    # Floating chat button
 │   │   │   └── RawMaterialsModal.tsx
@@ -103,9 +107,8 @@ supplier (40) ── supplier_product (1,633)
 │   │   │   └── AnalysisPage.tsx
 │   │   └── lib/
 │   │       └── api.ts          # API client
-│   ├── dev-server.js           # Local API server
 │   └── vite.config.ts
-├── backend/
+├── backend/                    # Scripts & utilities
 │   └── scripts/
 │       └── migrate-sqlite-to-postgres.mjs
 ├── data/
@@ -114,13 +117,15 @@ supplier (40) ── supplier_product (1,633)
 │   ├── FULL_IMPLEMENTATION_SPEC.md
 │   ├── IMPLEMENTATION_GUIDE.md
 │   ├── DATA_ANALYSIS.md
-│   └── NEXT_STEPS.md           # Implementation roadmap
-└── challenge-info/             # Hackathon requirements
+│   └── NEXT_STEPS.md
+├── challenge-info/             # Hackathon requirements
+├── vercel.json                 # Vercel configuration
+└── .env                        # Environment variables
 ```
 
 ## Environment Variables
 
-Create a `.env` file in the root directory:
+Set these in Vercel dashboard (Settings > Environment Variables):
 
 ```env
 # Gemini AI

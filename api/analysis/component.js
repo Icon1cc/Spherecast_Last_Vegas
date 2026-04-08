@@ -1,4 +1,4 @@
-import { createPool } from "@vercel/postgres";
+import { createPool } from "../lib/db.js";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export default async function handler(req, res) {
@@ -7,6 +7,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
+  let pool;
   try {
     const { componentId, weights } = req.body;
 
@@ -14,7 +15,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "componentId and weights required" });
     }
 
-    const pool = createPool();
+    pool = createPool();
 
     // Get component name
     const componentQuery = `SELECT id, sku as name FROM product WHERE id = $1`;
@@ -50,7 +51,7 @@ export default async function handler(req, res) {
     if (geminiKey && suppliers.length > 0) {
       try {
         const genAI = new GoogleGenerativeAI(geminiKey);
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
         const prompt = `Briefly recommend a supplier for "${component.name}" from: ${suppliers.map(s => s.name).join(", ")}. Priorities: price ${price}/10, quality ${quality}/10, compliance ${compliance}/10. Keep response under 50 words.`;
         const result = await model.generateContent(prompt);
         reasoning = result.response.text() || reasoning;
@@ -80,5 +81,7 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error("Analysis error:", error);
     return res.status(500).json({ error: "Failed to generate analysis" });
+  } finally {
+    if (pool) await pool.end();
   }
 }

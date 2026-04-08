@@ -1,18 +1,4 @@
-import pg from "pg";
-
-function createPool() {
-  const connectionString = process.env.POSTGRES_URL || process.env.DATABASE_URL;
-
-  if (!connectionString) {
-    throw new Error("Database connection string not found");
-  }
-
-  return new pg.Pool({
-    connectionString,
-    ssl: { rejectUnauthorized: false },
-    max: 5,
-  });
-}
+import { createPool } from "../../lib/db.js";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {

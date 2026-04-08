@@ -1,5 +1,5 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import pg from "pg";
+import { createPool } from "../lib/db.js";
 
 const SYSTEM_PROMPT = `You are Jarvis, an AI assistant for SupplyWise - a supply chain decision-support system for CPG (Consumer Packaged Goods) companies.
 
@@ -15,17 +15,6 @@ Guidelines:
 - Mention confidence levels when making recommendations
 - If you don't have enough data, say so
 - Keep responses conversational and helpful`;
-
-function createPool() {
-  const connectionString = process.env.POSTGRES_URL || process.env.DATABASE_URL;
-  if (!connectionString) return null;
-
-  return new pg.Pool({
-    connectionString,
-    ssl: { rejectUnauthorized: false },
-    max: 3,
-  });
-}
 
 async function getDbContext(pool) {
   if (!pool) return null;
@@ -78,7 +67,7 @@ export default async function handler(req, res) {
 
     // Initialize Gemini
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
     // Build chat history
     const chatHistory = [
