@@ -2,72 +2,316 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { X, Send, Mic, MicOff, Plus } from "lucide-react";
 import { format } from "date-fns";
 import type { ChatMessage, ChatSession } from "@/data/sampleData";
-import { sampleChatSessions } from "@/data/sampleData";
 
 interface ChatPanelProps {
   open: boolean;
   onClose: () => void;
 }
 
-const APP_INITIALS = "SW";
+const APP_INITIALS = "JR";
+const JARVIS_GREETING = "Hello I am jarvis, how can I help you today";
+const DEFAULT_ELEVENLABS_VOICE_ID = "s3TPKV1kjDlVtZbl4Ksh";
+const ELEVENLABS_API_KEY = import.meta.env.VITE_ELEVENLABS_API_KEY?.trim() ?? "";
+const ELEVENLABS_VOICE_ID =
+  import.meta.env.VITE_ELEVENLABS_VOICE_ID?.trim() ?? DEFAULT_ELEVENLABS_VOICE_ID;
+const ELEVENLABS_TTS_MODEL_ID =
+  import.meta.env.VITE_ELEVENLABS_TTS_MODEL_ID?.trim() ?? "eleven_multilingual_v2";
+const ELEVENLABS_STT_MODEL_ID =
+  import.meta.env.VITE_ELEVENLABS_STT_MODEL_ID?.trim() ?? "scribe_v1";
+
+const createMessage = (role: ChatMessage["role"], content: string): ChatMessage => ({
+  id: crypto.randomUUID(),
+  role,
+  content,
+  timestamp: new Date(),
+});
+
+const createJarvisSession = (title: string): ChatSession => ({
+  id: crypto.randomUUID(),
+  title,
+  date: new Date(),
+  messages: [createMessage("assistant", JARVIS_GREETING)],
+});
 
 const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
-  const [sessions, setSessions] = useState<ChatSession[]>(sampleChatSessions);
-  const [activeSessionId, setActiveSessionId] = useState(sessions[0]?.id ?? "");
+  const initialSessionRef = useRef<ChatSession>(createJarvisSession("Jarvis Session"));
+  const [sessions, setSessions] = useState<ChatSession[]>([initialSessionRef.current]);
+  const [activeSessionId, setActiveSessionId] = useState(initialSessionRef.current.id);
   const [input, setInput] = useState("");
   const [isListening, setIsListening] = useState(false);
+  const [isVoiceProcessing, setIsVoiceProcessing] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const audioPlaybackRef = useRef<HTMLAudioElement | null>(null);
+  const greetedSessionIdsRef = useRef<Set<string>>(new Set());
 
   const activeSession = sessions.find((s) => s.id === activeSessionId);
   const messages = activeSession?.messages ?? [];
+
+  const appendMessagesToSession = useCallback((sessionId: string, newMessages: ChatMessage[]) => {
+    setSessions((prev) =>
+      prev.map((session) =>
+        session.id === sessionId
+          ? { ...session, messages: [...session.messages, ...newMessages] }
+          : session
+      )
+    );
+  }, []);
+
+  const stopMicrophoneTracks = useCallback(() => {
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    mediaStreamRef.current = null;
+  }, []);
+
+  const stopAudioPlayback = useCallback(() => {
+    if (!audioPlaybackRef.current) return;
+    audioPlaybackRef.current.pause();
+    URL.revokeObjectURL(audioPlaybackRef.current.src);
+    audioPlaybackRef.current = null;
+  }, []);
+
+  const speakText = useCallback(
+    async (text: string) => {
+      if (!ELEVENLABS_API_KEY) return;
+
+      try {
+        stopAudioPlayback();
+
+        const response = await fetch(
+          `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`,
+          {
+            method: "POST",
+            headers: {
+              Accept: "audio/mpeg",
+              "Content-Type": "application/json",
+              "xi-api-key": ELEVENLABS_API_KEY,
+            },
+            body: JSON.stringify({
+              text,
+              model_id: ELEVENLABS_TTS_MODEL_ID,
+            }),
+          }
+        );
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`ElevenLabs TTS failed: ${errorText}`);
+        }
+
+        const audioBlob = await response.blob();
+        const audioUrl = URL.createObjectURL(audioBlob);
+        const audio = new Audio(audioUrl);
+        audioPlaybackRef.current = audio;
+        audio.onended = () => {
+          URL.revokeObjectURL(audioUrl);
+          if (audioPlaybackRef.current === audio) {
+            audioPlaybackRef.current = null;
+          }
+        };
+
+        await audio.play();
+      } catch (error) {
+        console.error("Unable to play ElevenLabs audio", error);
+      }
+    },
+    [stopAudioPlayback]
+  );
+
+  const transcribeAudio = useCallback(async (audioBlob: Blob): Promise<string> => {
+    if (!ELEVENLABS_API_KEY) {
+      throw new Error("Missing ElevenLabs API key");
+    }
+
+    const formData = new FormData();
+    formData.append("file", audioBlob, "jarvis-user-journey.webm");
+    formData.append("model_id", ELEVENLABS_STT_MODEL_ID);
+
+    const response = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
+      method: "POST",
+      headers: {
+        "xi-api-key": ELEVENLABS_API_KEY,
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`ElevenLabs STT failed: ${errorText}`);
+    }
+
+    const data = (await response.json()) as { text?: string; transcript?: string };
+    return (data.text ?? data.transcript ?? "").trim();
+  }, []);
+
+  const startListening = useCallback(async () => {
+    if (!activeSessionId) return;
+
+    if (!ELEVENLABS_API_KEY) {
+      appendMessagesToSession(activeSessionId, [
+        createMessage(
+          "assistant",
+          "I need VITE_ELEVENLABS_API_KEY in your .env file before I can process voice."
+        ),
+      ]);
+      return;
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      appendMessagesToSession(activeSessionId, [
+        createMessage("assistant", "This browser does not support microphone recording."),
+      ]);
+      return;
+    }
+
+    try {
+      const recordingSessionId = activeSessionId;
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+
+      const recorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+      audioChunksRef.current = [];
+
+      recorder.ondataavailable = (event: BlobEvent) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onstop = async () => {
+        stopMicrophoneTracks();
+        mediaRecorderRef.current = null;
+        setIsListening(false);
+
+        if (audioChunksRef.current.length === 0) {
+          return;
+        }
+
+        setIsVoiceProcessing(true);
+        try {
+          const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+          const transcript = await transcribeAudio(audioBlob);
+
+          if (!transcript) {
+            appendMessagesToSession(recordingSessionId, [
+              createMessage(
+                "assistant",
+                "I could not hear a clear message. Please try describing your journey again."
+              ),
+            ]);
+            return;
+          }
+
+          const userMessage = createMessage("user", transcript);
+          const aiResponse = createMessage(
+            "assistant",
+            `Thanks, I captured this part of your journey: "${transcript}". Please continue with the next step.`
+          );
+
+          appendMessagesToSession(recordingSessionId, [userMessage, aiResponse]);
+          void speakText(aiResponse.content);
+        } catch (error) {
+          console.error("Voice transcription failed", error);
+          appendMessagesToSession(recordingSessionId, [
+            createMessage(
+              "assistant",
+              "I could not process that recording with ElevenLabs. Please try again."
+            ),
+          ]);
+        } finally {
+          audioChunksRef.current = [];
+          setIsVoiceProcessing(false);
+        }
+      };
+
+      recorder.start();
+      setIsListening(true);
+    } catch (error) {
+      console.error("Microphone access failed", error);
+      appendMessagesToSession(activeSessionId, [
+        createMessage(
+          "assistant",
+          "I could not access your microphone. Please allow mic permission and try again."
+        ),
+      ]);
+      stopMicrophoneTracks();
+      setIsListening(false);
+    }
+  }, [activeSessionId, appendMessagesToSession, speakText, stopMicrophoneTracks, transcribeAudio]);
+
+  const stopListening = useCallback(() => {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder || recorder.state === "inactive") {
+      setIsListening(false);
+      return;
+    }
+
+    recorder.stop();
+    setIsListening(false);
+  }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
 
+  useEffect(() => {
+    if (!open || !activeSession) return;
+
+    const hasGreeting = activeSession.messages.some(
+      (msg) => msg.role === "assistant" && msg.content === JARVIS_GREETING
+    );
+
+    if (!hasGreeting) {
+      appendMessagesToSession(activeSession.id, [createMessage("assistant", JARVIS_GREETING)]);
+    }
+
+    if (!greetedSessionIdsRef.current.has(activeSession.id)) {
+      greetedSessionIdsRef.current.add(activeSession.id);
+      void speakText(JARVIS_GREETING);
+    }
+  }, [open, activeSession, appendMessagesToSession, speakText]);
+
+  useEffect(() => {
+    if (!open && isListening) {
+      stopListening();
+    }
+  }, [isListening, open, stopListening]);
+
+  useEffect(() => {
+    return () => {
+      if (mediaRecorderRef.current) {
+        mediaRecorderRef.current.ondataavailable = null;
+        mediaRecorderRef.current.onstop = null;
+        if (mediaRecorderRef.current.state !== "inactive") {
+          mediaRecorderRef.current.stop();
+        }
+      }
+      stopMicrophoneTracks();
+      stopAudioPlayback();
+    };
+  }, [stopAudioPlayback, stopMicrophoneTracks]);
+
   const sendMessage = useCallback(() => {
     const trimmedInput = input.trim();
-    if (!trimmedInput || !activeSession) return;
+    if (!trimmedInput || !activeSession) {
+      return;
+    }
 
-    const userMessage: ChatMessage = {
-      id: crypto.randomUUID(),
-      role: "user",
-      content: trimmedInput,
-      timestamp: new Date(),
-    };
-
-    const aiResponse: ChatMessage = {
-      id: crypto.randomUUID(),
-      role: "assistant",
-      content:
-        "I'll look into that for you. Based on our supply chain data, I can provide detailed analysis and recommendations. Would you like me to run a full supplier comparison?",
-      timestamp: new Date(),
-    };
-
-    setSessions((prev) =>
-      prev.map((session) =>
-        session.id === activeSessionId
-          ? { ...session, messages: [...session.messages, userMessage, aiResponse] }
-          : session
-      )
+    const userMessage = createMessage("user", trimmedInput);
+    const aiResponse = createMessage(
+      "assistant",
+      "Thanks for describing that. I am tracking your journey step by step. Please continue when ready."
     );
+
+    appendMessagesToSession(activeSessionId, [userMessage, aiResponse]);
+    void speakText(aiResponse.content);
     setInput("");
-  }, [input, activeSession, activeSessionId]);
+  }, [input, activeSession, appendMessagesToSession, activeSessionId, speakText]);
 
   const createNewChat = useCallback(() => {
-    const newSession: ChatSession = {
-      id: crypto.randomUUID(),
-      title: "New Chat",
-      date: new Date(),
-      messages: [
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: "Hi! I'm your SupplyWise assistant. How can I help you today?",
-          timestamp: new Date(),
-        },
-      ],
-    };
+    const newSession = createJarvisSession("New Chat");
     setSessions((prev) => [newSession, ...prev]);
     setActiveSessionId(newSession.id);
   }, []);
@@ -79,7 +323,14 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
     }
   };
 
-  const toggleVoice = () => setIsListening((prev) => !prev);
+  const toggleVoice = useCallback(() => {
+    if (isListening) {
+      stopListening();
+      return;
+    }
+
+    void startListening();
+  }, [isListening, startListening, stopListening]);
 
   if (!open) return null;
 
@@ -93,9 +344,7 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
       <div className="relative w-full md:w-[520px] h-full bg-card shadow-2xl animate-slide-in-right flex flex-col">
         {/* Header */}
         <header className="h-14 bg-header flex items-center justify-between px-4 shrink-0">
-          <span className="text-header-foreground font-semibold text-sm">
-            SupplyWise Assistant
-          </span>
+          <span className="text-header-foreground font-semibold text-sm">Jarvis Assistant</span>
           <button
             onClick={onClose}
             className="text-header-foreground/70 hover:text-header-foreground transition-colors"
@@ -199,17 +448,20 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
                   ))}
                 </div>
               )}
+              {isVoiceProcessing && (
+                <span className="text-[11px] text-muted-foreground">Processing voice...</span>
+              )}
               <input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Type a message..."
+                placeholder="Describe the user journey..."
                 className="flex-1 px-3 py-2 text-sm bg-muted rounded-md border-0 outline-none focus:ring-2 focus:ring-primary/30"
                 aria-label="Message input"
               />
               <button
                 onClick={sendMessage}
-                disabled={!input.trim()}
+                disabled={!input.trim() || isVoiceProcessing}
                 className="p-2 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 aria-label="Send message"
               >
