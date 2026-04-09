@@ -1,0 +1,9 @@
+{
+  "name": "spherecast-last-vegas",
+  "private": true,
+  "version": "1.0.0",
+  "dependencies": {
+    "@google/generative-ai": "^0.24.0",
+    "pg": "^8.16.3"
+  }
+}
