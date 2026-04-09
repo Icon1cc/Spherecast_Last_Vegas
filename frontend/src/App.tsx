@@ -5,6 +5,10 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import Dashboard from "./pages/Index";
 import AnalysisPage from "./pages/AnalysisPage";
 import AboutPage from "./pages/About";
+import ContactPage from "./pages/Contact";
+import ProfilePage from "./pages/Profile";
+import PrivacyPage from "./pages/Privacy";
+import TermsPage from "./pages/Terms";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -25,6 +29,10 @@ const App = () => (
           <Route path="/" element={<Dashboard />} />
           <Route path="/analysis/:productId/:materialId" element={<AnalysisPage />} />
           <Route path="/about" element={<AboutPage />} />
+          <Route path="/contact" element={<ContactPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
+          <Route path="/terms" element={<TermsPage />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

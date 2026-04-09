@@ -239,6 +239,11 @@ const AnalysisPage = () => {
     toast.success(`Substitute selected: ${name}`);
   }, []);
 
+  const handleBuyNow = useCallback((name: string) => {
+    toast.success("Added to your cart.");
+    toast.message(`Selected supplier: ${name}`);
+  }, []);
+
   const handleDownloadPDF = useCallback(() => {
     toast.success("PDF download started");
   }, []);
@@ -320,9 +325,18 @@ const AnalysisPage = () => {
                     {analysis.recommendedSupplier.reasoning}
                   </p>
                 </div>
-                <span className="shrink-0 inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-success/10 text-success">
-                  {Math.round(analysis.recommendedSupplier.score * 100)}% confidence
-                </span>
+                <div className="shrink-0 flex flex-col items-start sm:items-end gap-2">
+                  <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-success/10 text-success">
+                    {Math.round(analysis.recommendedSupplier.score * 100)}% confidence
+                  </span>
+                  <button
+                    onClick={() => handleBuyNow(analysis.recommendedSupplier.name)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                  >
+                    <ShoppingCart className="w-3.5 h-3.5" />
+                    Buy Now
+                  </button>
+                </div>
               </div>
               {analysis.alternatives.length > 0 && (
                 <div className="border-t pt-4">

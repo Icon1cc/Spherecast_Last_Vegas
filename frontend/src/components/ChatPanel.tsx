@@ -741,7 +741,7 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
         {/* Header */}
         <header className="h-14 bg-header flex items-center justify-between px-4 shrink-0">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center ring-1 ring-header-foreground/30 text-xs font-bold">
+            <div className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center ring-1 ring-header-foreground/30 text-xs font-bold">
               {JARVIS_INITIALS}
             </div>
             <span className="text-header-foreground font-semibold text-sm">Jarvis Assistant</span>
@@ -798,7 +798,7 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
                     }`}
                   >
                     {msg.role === "assistant" && (
-                      <div className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0 mt-0.5 ring-1 ring-border text-[10px] font-bold">
+                      <div className="w-6 h-6 rounded-full bg-black text-white flex items-center justify-center shrink-0 mt-0.5 ring-1 ring-border text-[10px] font-bold">
                         {JARVIS_INITIALS}
                       </div>
                     )}

@@ -1,0 +1,44 @@
+import { Mail, Users } from "lucide-react";
+import Layout from "@/components/Layout";
+
+const CONTACTS = [
+  { name: "Rishabh Tiwari", email: "rishtiwari98@gmail.com" },
+  { name: "Florian Sprick", email: "florian.sprick@hotmail.com" },
+  { name: "Vinayak Joshi", email: "vinayakjoshi2001@gmail.com" },
+  { name: "Gonzalo Baonza", email: "Gonzalobaonza@gmail.com" },
+  { name: "Anton Kantsemal", email: "str4tum@gmail.com" },
+] as const;
+
+const ContactPage = () => {
+  return (
+    <Layout>
+      <main className="max-w-5xl mx-auto px-4 py-8 animate-fade-in">
+        <section className="bg-card rounded-lg border shadow-sm p-6 mb-6">
+          <div className="flex items-center gap-2 mb-3">
+            <Users className="w-5 h-5 text-primary" />
+            <h1 className="text-2xl font-bold tracking-tight">Contact</h1>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Reach out to the team below for product, data, and integration support.
+          </p>
+        </section>
+
+        <section className="bg-card rounded-lg border shadow-sm p-6">
+          <div className="space-y-3">
+            {CONTACTS.map((contact, index) => (
+              <div key={contact.name} className="flex items-start justify-between gap-4 border-b last:border-b-0 pb-3 last:pb-0">
+                <span className="text-sm font-medium">{index + 1}. {contact.name}</span>
+                <a href={`mailto:${contact.email}`} className="inline-flex items-center gap-1 text-sm text-primary hover:underline">
+                  <Mail className="w-3.5 h-3.5" />
+                  {contact.email}
+                </a>
+              </div>
+            ))}
+          </div>
+        </section>
+      </main>
+    </Layout>
+  );
+};
+
+export default ContactPage;
