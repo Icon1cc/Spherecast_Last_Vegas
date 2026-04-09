@@ -1,39 +1,16 @@
 import { createPool } from "../lib/db.js";
+import { handleDbError } from "../lib/errors.js";
+import { parsePaginationParams } from "../lib/validation.js";
+import { CACHE_CONTROL_HEADER, PRODUCT_TYPE_FINISHED_GOOD } from "../lib/constants.js";
 
-function sanitizeErrorMessage(message) {
-  if (!message) return "Unknown error";
-  return String(message)
-    .replace(/(postgres(ql)?:\/\/)([^@]+)@/gi, "$1***@")
-    .replace(/\s+/g, " ")
-    .slice(0, 240);
-}
-
-function classifyDbError(error) {
-  const message = error instanceof Error ? error.message : String(error);
-
-  if (message.includes("Database connection string not found")) {
-    return {
-      status: 500,
-      body: {
-        error: "Database not configured",
-        details: "Set POSTGRES_URL in Vercel environment variables and redeploy.",
-      },
-    };
-  }
-
-  if (message.includes('relation "product" does not exist') || message.includes('relation "company" does not exist')) {
-    return {
-      status: 500,
-      body: {
-        error: "Database schema missing",
-        details: "Required tables are missing. Run postgres schema + migration on your Vercel Postgres DB.",
-      },
-    };
-  }
-
-  return null;
-}
-
+/**
+ * GET /api/products
+ * Fetches paginated list of finished-good products with optional search.
+ * @param {Object} req.query - Query parameters
+ * @param {string} [req.query.page] - Page number (1-indexed, default: 1)
+ * @param {string} [req.query.limit] - Items per page (default: 20, max: 100)
+ * @param {string} [req.query.search] - Search term for product/company name
+ */
 export default async function handler(req, res) {
   if (req.method !== "GET") {
     res.setHeader("Allow", "GET");
@@ -44,29 +21,27 @@ export default async function handler(req, res) {
   try {
     pool = createPool();
 
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
-    const search = req.query.search || "";
-    const offset = (page - 1) * limit;
+    const { page, limit, offset } = parsePaginationParams(req.query);
+    const search = (req.query.search || "").trim();
 
     let countQuery = `
       SELECT COUNT(*) as total
       FROM product p
       JOIN company c ON p.company_id = c.id
-      WHERE p.type = 'finished-good'
+      WHERE p.type = $1
     `;
 
     let dataQuery = `
       SELECT p.id, p.sku as name, p.type, c.name as company
       FROM product p
       JOIN company c ON p.company_id = c.id
-      WHERE p.type = 'finished-good'
+      WHERE p.type = $1
     `;
 
-    const params = [];
+    const params = [PRODUCT_TYPE_FINISHED_GOOD];
 
     if (search) {
-      const searchCondition = ` AND (p.sku ILIKE $1 OR c.name ILIKE $1)`;
+      const searchCondition = ` AND (p.sku ILIKE $2 OR c.name ILIKE $2)`;
       countQuery += searchCondition;
       dataQuery += searchCondition;
       params.push(`%${search}%`);
@@ -81,7 +56,7 @@ export default async function handler(req, res) {
 
     const total = parseInt(countResult.rows[0]?.total || "0");
 
-    res.setHeader("Cache-Control", "s-maxage=60, stale-while-revalidate");
+    res.setHeader("Cache-Control", CACHE_CONTROL_HEADER);
     return res.status(200).json({
       products: productsResult.rows,
       pagination: {
@@ -92,15 +67,7 @@ export default async function handler(req, res) {
       },
     });
   } catch (error) {
-    console.error("Products API error:", error);
-    const classified = classifyDbError(error);
-    if (classified) {
-      return res.status(classified.status).json(classified.body);
-    }
-    return res.status(500).json({
-      error: "Failed to fetch products",
-      details: sanitizeErrorMessage(error instanceof Error ? error.message : String(error)),
-    });
+    return handleDbError(res, error, "Products API");
   } finally {
     if (pool) await pool.end();
   }

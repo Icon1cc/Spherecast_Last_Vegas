@@ -1,21 +1,18 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { createPool } from "../lib/db.js";
+import {
+  GEMINI_DEFAULT_MODEL,
+  GEMINI_MAX_OUTPUT_TOKENS,
+  GEMINI_TEMPERATURE,
+  JARVIS_SYSTEM_PROMPT,
+} from "../lib/constants.js";
+import { validateNonEmptyString } from "../lib/validation.js";
 
-const SYSTEM_PROMPT = `You are Jarvis, an AI assistant for SupplyWise - a supply chain decision-support system for CPG (Consumer Packaged Goods) companies.
-
-Your capabilities:
-- Help users understand their product catalog and Bill of Materials (BOM)
-- Analyze raw materials and suggest sourcing recommendations
-- Find interchangeable components (substitutes)
-- Evaluate suppliers based on quality, compliance, cost, and lead time
-- Provide clear reasoning and evidence for recommendations
-
-Guidelines:
-- Be concise but informative
-- Mention confidence levels when making recommendations
-- If you don't have enough data, say so
-- Keep responses conversational and helpful`;
-
+/**
+ * Fetches database context for AI to reference.
+ * @param {import('pg').Pool} pool - Database connection pool
+ * @returns {Promise<Object|null>} Database statistics or null on failure
+ */
 async function getDbContext(pool) {
   if (!pool) return null;
 
@@ -36,6 +33,13 @@ async function getDbContext(pool) {
   }
 }
 
+/**
+ * POST /api/chat/message
+ * Processes chat messages through Gemini AI with optional database context.
+ * @param {Object} req.body - Request body
+ * @param {string} req.body.message - User message (required)
+ * @param {Array} [req.body.history] - Previous chat messages
+ */
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
@@ -48,10 +52,11 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { message, history = [] } = req.body;
+    const { message, history = [] } = req.body || {};
 
-    if (!message || typeof message !== "string") {
-      return res.status(400).json({ error: "Message is required" });
+    const { valid, error } = validateNonEmptyString(message, "Message");
+    if (!valid) {
+      return res.status(400).json({ error });
     }
 
     // DB context is optional for chat quality; do not block chat if DB is unavailable.
@@ -67,14 +72,14 @@ export default async function handler(req, res) {
     }
 
     // Build context-aware prompt
-    let contextPrompt = SYSTEM_PROMPT;
+    let contextPrompt = JARVIS_SYSTEM_PROMPT;
     if (dbContext) {
       contextPrompt += `\n\nDatabase context: ${dbContext.productCount} products, ${dbContext.supplierCount} suppliers, ${dbContext.companyCount} companies.`;
     }
 
     // Initialize Gemini
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const model = genAI.getGenerativeModel({ model: GEMINI_DEFAULT_MODEL });
 
     // Build chat history
     const chatHistory = [
@@ -89,8 +94,8 @@ export default async function handler(req, res) {
     const chat = model.startChat({
       history: chatHistory,
       generationConfig: {
-        maxOutputTokens: 1024,
-        temperature: 0.7,
+        maxOutputTokens: GEMINI_MAX_OUTPUT_TOKENS,
+        temperature: GEMINI_TEMPERATURE,
       },
     });
 

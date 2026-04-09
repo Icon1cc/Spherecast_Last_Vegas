@@ -33,6 +33,31 @@ export interface ChatResponse {
   timestamp: string;
 }
 
+export interface AnalysisWeights {
+  price: number;
+  quality: number;
+  compliance: number;
+  consolidation: number;
+  leadTime: number;
+}
+
+export interface Supplier {
+  name: string;
+  score: number;
+  reasoning: string;
+}
+
+export interface AnalysisResponse {
+  component: {
+    id: number;
+    name: string;
+  };
+  recommendedSupplier: Supplier;
+  alternatives: Supplier[];
+  metrics: AnalysisWeights;
+  supplierCount: number;
+}
+
 async function buildApiError(response: Response, fallbackMessage: string): Promise<Error> {
   try {
     const contentType = response.headers.get("content-type") || "";
@@ -93,6 +118,23 @@ export async function sendChatMessage(
 
   if (!response.ok) {
     throw await buildApiError(response, "Failed to send message");
+  }
+  return response.json();
+}
+
+// Analyze component suppliers with weighted scoring
+export async function getComponentAnalysis(
+  componentId: number,
+  weights: AnalysisWeights
+): Promise<AnalysisResponse> {
+  const response = await fetch("/api/analysis/component", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ componentId, weights }),
+  });
+
+  if (!response.ok) {
+    throw await buildApiError(response, "Failed to analyze component");
   }
   return response.json();
 }

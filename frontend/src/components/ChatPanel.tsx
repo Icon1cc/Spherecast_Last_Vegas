@@ -1,7 +1,7 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { X, Send, Mic, MicOff, Plus, Volume2, VolumeX } from "lucide-react";
 import { format } from "date-fns";
-import type { ChatMessage, ChatSession } from "@/data/sampleData";
+import type { ChatMessage, ChatSession } from "@/types/chat";
 import { sendChatMessage } from "@/lib/api";
 
 interface ChatPanelProps {
@@ -90,6 +90,133 @@ const splitTextForSpeech = (text: string, maxChars: number = TTS_CHUNK_MAX_CHARS
 
   if (current) chunks.push(current);
   return chunks;
+};
+
+/**
+ * Renders markdown-formatted text with proper styling.
+ * Supports: **bold**, *italic*, bullet lists, numbered lists
+ */
+const MessageContent = ({ content }: { content: string }) => {
+  const formattedContent = useMemo(() => {
+    // Split by lines to handle lists
+    const lines = content.split("\n");
+    const elements: React.ReactNode[] = [];
+    let listItems: string[] = [];
+    let listType: "ul" | "ol" | null = null;
+
+    const flushList = () => {
+      if (listItems.length > 0 && listType) {
+        const ListTag = listType;
+        elements.push(
+          <ListTag key={elements.length} className={listType === "ul" ? "list-disc ml-4 my-2" : "list-decimal ml-4 my-2"}>
+            {listItems.map((item, i) => (
+              <li key={i} className="my-0.5">{formatInlineText(item)}</li>
+            ))}
+          </ListTag>
+        );
+        listItems = [];
+        listType = null;
+      }
+    };
+
+    const formatInlineText = (text: string): React.ReactNode => {
+      // Handle **bold** and *italic*
+      const parts: React.ReactNode[] = [];
+      let remaining = text;
+      let key = 0;
+
+      while (remaining.length > 0) {
+        // Check for bold (**text**)
+        const boldMatch = remaining.match(/^\*\*([^*]+)\*\*/);
+        if (boldMatch) {
+          parts.push(<strong key={key++} className="font-semibold">{boldMatch[1]}</strong>);
+          remaining = remaining.slice(boldMatch[0].length);
+          continue;
+        }
+
+        // Check for italic (*text*)
+        const italicMatch = remaining.match(/^\*([^*]+)\*/);
+        if (italicMatch) {
+          parts.push(<em key={key++} className="italic">{italicMatch[1]}</em>);
+          remaining = remaining.slice(italicMatch[0].length);
+          continue;
+        }
+
+        // Check for inline code (`code`)
+        const codeMatch = remaining.match(/^`([^`]+)`/);
+        if (codeMatch) {
+          parts.push(
+            <code key={key++} className="bg-muted px-1 py-0.5 rounded text-xs font-mono">
+              {codeMatch[1]}
+            </code>
+          );
+          remaining = remaining.slice(codeMatch[0].length);
+          continue;
+        }
+
+        // Find next special character
+        const nextSpecial = remaining.search(/[*`]/);
+        if (nextSpecial === -1) {
+          parts.push(remaining);
+          break;
+        } else if (nextSpecial === 0) {
+          // Special char but no match - treat as literal
+          parts.push(remaining[0]);
+          remaining = remaining.slice(1);
+        } else {
+          parts.push(remaining.slice(0, nextSpecial));
+          remaining = remaining.slice(nextSpecial);
+        }
+      }
+
+      return parts.length === 1 ? parts[0] : <>{parts}</>;
+    };
+
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+
+      // Check for bullet list (- or *)
+      const bulletMatch = trimmedLine.match(/^[-*]\s+(.+)$/);
+      if (bulletMatch) {
+        if (listType === "ol") flushList();
+        listType = "ul";
+        listItems.push(bulletMatch[1]);
+        continue;
+      }
+
+      // Check for numbered list (1. 2. etc)
+      const numberedMatch = trimmedLine.match(/^\d+\.\s+(.+)$/);
+      if (numberedMatch) {
+        if (listType === "ul") flushList();
+        listType = "ol";
+        listItems.push(numberedMatch[1]);
+        continue;
+      }
+
+      // Not a list item - flush any pending list
+      flushList();
+
+      // Empty line = paragraph break
+      if (!trimmedLine) {
+        elements.push(<br key={elements.length} />);
+        continue;
+      }
+
+      // Regular paragraph
+      elements.push(
+        <p key={elements.length} className="my-1">
+          {formatInlineText(trimmedLine)}
+        </p>
+      );
+    }
+
+    // Flush any remaining list
+    flushList();
+
+    return elements;
+  }, [content]);
+
+  return <div className="space-y-1">{formattedContent}</div>;
 };
 
 const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
@@ -678,7 +805,11 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
                             : "bg-muted"
                         }`}
                       >
-                        {msg.content}
+                        {msg.role === "assistant" ? (
+                          <MessageContent content={msg.content} />
+                        ) : (
+                          msg.content
+                        )}
                       </div>
                       <div className="text-[10px] text-muted-foreground mt-1 px-1">
                         {format(msg.timestamp, "h:mm a")}
@@ -745,7 +876,7 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Describe the user journey..."
+                placeholder="Ask Jarvis anything..."
                 className="flex-1 px-3 py-2 text-sm bg-muted rounded-md border-0 outline-none focus:ring-2 focus:ring-primary/30"
                 aria-label="Message input"
               />

@@ -1,10 +1,20 @@
 import { Buffer } from "node:buffer";
+import {
+  ELEVENLABS_BASE_URL,
+  ELEVENLABS_DEFAULT_VOICE_ID,
+  ELEVENLABS_DEFAULT_TTS_MODEL,
+  ELEVENLABS_DEFAULT_OPTIMIZE_LATENCY,
+  ELEVENLABS_MAX_OPTIMIZE_LATENCY,
+  CONTENT_TYPE_AUDIO,
+} from "../lib/constants.js";
+import { validateNonEmptyString, validateOptionalString, validateOptionalIntegerInRange } from "../lib/validation.js";
 
-const ELEVENLABS_BASE_URL = "https://api.elevenlabs.io/v1";
-const DEFAULT_VOICE_ID = "s3TPKV1kjDlVtZbl4Ksh";
-const DEFAULT_TTS_MODEL_ID = "eleven_multilingual_v2";
-const DEFAULT_OPTIMIZE_LATENCY = 3;
-
+/**
+ * Reads the raw request body as a Buffer.
+ * Required for Vercel serverless functions that don't auto-parse JSON.
+ * @param {import('http').IncomingMessage} req - Request object
+ * @returns {Promise<Buffer>} Raw body buffer
+ */
 async function readRawBody(req) {
   const chunks = [];
   for await (const chunk of req) {
@@ -13,17 +23,24 @@ async function readRawBody(req) {
   return Buffer.concat(chunks);
 }
 
+/**
+ * POST /api/elevenlabs/tts
+ * Proxies text-to-speech requests to ElevenLabs API.
+ * @param {Object} req.body - Request body
+ * @param {string} req.body.text - Text to convert to speech (required)
+ * @param {string} [req.body.voiceId] - Voice ID (default: s3TPKV1kjDlVtZbl4Ksh)
+ * @param {string} [req.body.modelId] - Model ID (default: eleven_multilingual_v2)
+ * @param {number} [req.body.optimizeLatency] - Latency optimization 0-4 (default: 3)
+ */
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
-    res.status(405).json({ error: "Method not allowed" });
-    return;
+    return res.status(405).json({ error: "Method not allowed" });
   }
 
   const apiKey = process.env.ELEVENLABS_API_KEY?.trim();
   if (!apiKey) {
-    res.status(500).json({ error: "Missing ELEVENLABS_API_KEY on server" });
-    return;
+    return res.status(500).json({ error: "Missing ELEVENLABS_API_KEY on server" });
   }
 
   try {
@@ -36,24 +53,19 @@ export default async function handler(req, res) {
       payload = JSON.parse(rawBody.toString("utf-8"));
     }
 
-    const text = typeof payload.text === "string" ? payload.text.trim() : "";
-    const voiceId =
-      typeof payload.voiceId === "string" && payload.voiceId.trim()
-        ? payload.voiceId.trim()
-        : DEFAULT_VOICE_ID;
-    const modelId =
-      typeof payload.modelId === "string" && payload.modelId.trim()
-        ? payload.modelId.trim()
-        : DEFAULT_TTS_MODEL_ID;
-    const optimizeLatencyRaw = Number.parseInt(String(payload.optimizeLatency ?? ""), 10);
-    const optimizeLatency = Number.isNaN(optimizeLatencyRaw)
-      ? DEFAULT_OPTIMIZE_LATENCY
-      : Math.max(0, Math.min(4, optimizeLatencyRaw));
-
-    if (!text) {
-      res.status(400).json({ error: "text is required" });
-      return;
+    const { valid: textValid, value: text, error: textError } = validateNonEmptyString(payload.text, "text");
+    if (!textValid) {
+      return res.status(400).json({ error: textError });
     }
+
+    const voiceId = validateOptionalString(payload.voiceId, ELEVENLABS_DEFAULT_VOICE_ID);
+    const modelId = validateOptionalString(payload.modelId, ELEVENLABS_DEFAULT_TTS_MODEL);
+    const optimizeLatency = validateOptionalIntegerInRange(
+      payload.optimizeLatency,
+      ELEVENLABS_DEFAULT_OPTIMIZE_LATENCY,
+      0,
+      ELEVENLABS_MAX_OPTIMIZE_LATENCY
+    );
 
     const ttsUrl = new URL(`${ELEVENLABS_BASE_URL}/text-to-speech/${voiceId}`);
     ttsUrl.searchParams.set("optimize_streaming_latency", String(optimizeLatency));
@@ -61,7 +73,7 @@ export default async function handler(req, res) {
     const upstream = await fetch(ttsUrl.toString(), {
       method: "POST",
       headers: {
-        Accept: "audio/mpeg",
+        Accept: CONTENT_TYPE_AUDIO,
         "Content-Type": "application/json",
         "xi-api-key": apiKey,
       },
@@ -73,19 +85,18 @@ export default async function handler(req, res) {
 
     if (!upstream.ok) {
       const errorText = await upstream.text();
-      res.status(upstream.status).json({
+      return res.status(upstream.status).json({
         error: errorText || "ElevenLabs TTS request failed",
       });
-      return;
     }
 
     const audioBuffer = Buffer.from(await upstream.arrayBuffer());
     res.status(200);
-    res.setHeader("Content-Type", "audio/mpeg");
+    res.setHeader("Content-Type", CONTENT_TYPE_AUDIO);
     res.setHeader("Cache-Control", "no-store");
-    res.send(audioBuffer);
+    return res.send(audioBuffer);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown TTS error";
-    res.status(500).json({ error: message });
+    return res.status(500).json({ error: message });
   }
 }
