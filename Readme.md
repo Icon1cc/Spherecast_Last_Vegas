@@ -47,20 +47,28 @@ This app is deployed on **Vercel**. Push to main branch to deploy automatically.
 - See all component ingredients
 - Navigate to detailed analysis
 
-### Analysis Page
-- AI-powered supplier recommendations backed by real-world enrichment data
-- Supplier comparison charts (Bar + Radar)
-- **5 criteria sliders aligned to actual enrichment fields:**
-  - Price / Cost (backed by `supplier_product.price_per_unit`)
-  - Regulatory Compliance (backed by `ingredient_profile.market_ban_eu/us`)
-  - Certification Fit (vegan/halal/kosher/non-GMO/organic match)
-  - Supply Risk (patent lock, single manufacturer, geographic diversity)
-  - Functional Fit (functional role, bioequivalence)
-- Gemini reasoning with enrichment context
-- Extended compliance grid: vegan, halal, non-GMO, organic, kosher, EU/US market bans, patent lock
-- Purchase/spec sheet links per supplier row
-- "Choose as substitute" action with confirmation banner
-- Sources accordion showing refs backing each claim
+### Analysis Page — Slider-Driven Scoring
+
+> **The sliders are the core decision engine.** Each directly weights one dimension of the scoring formula — moving a slider changes which supplier ranks first, not just the label text.
+
+Suppliers are ranked by a **data-driven weighted score** across 5 dimensions (0–1 each):
+
+| Slider | Scoring dimension | Data source |
+|--------|-------------------|-------------|
+| Price / Cost | Relative rank: cheapest supplier = 1.0, priciest = 0.0 | `supplier_product.price_per_unit` |
+| Regulatory Compliance | Hard 0 for any market ban; 1.0 for both EU+US permitted | `ingredient_profile.market_ban_eu/us` |
+| Certification Fit | Supplier certs matched against ingredient requirements | `supplier_product.certifications` |
+| Supply Risk | Patent lock (hard 0), single-manufacturer penalty, geo + count diversity bonus | `ingredient_profile.patent_lock`, `supplier.country` |
+| Functional Fit | 1.0 for Tier 1 (same CAS = same molecule) | constant |
+
+**Missing data is handled transparently:** unknown fields default to a 0.5 neutral baseline, then receive an additional penalty proportional to how much you weighted that criterion. If Regulatory = 10 and EU ban status is unknown, the score tanks — if Regulatory = 1, it barely moves.
+
+Each supplier also shows an **evidence quality badge** (e.g. "7/8 criteria verified") listing exactly which compliance criteria are unverified in the DB, plus how many source refs back the data.
+
+Other Analysis page features:
+- Gemini "Why This Supplier?" card — 3-4 sentences citing specific data points
+- 8-field compliance grid with unknown-state indicators
+- Purchase/spec sheet links, "Choose as substitute" action, sources accordion
 
 ### Tiered Substitution Pipeline
 Three tiers of substitution candidates per ingredient:
@@ -87,42 +95,15 @@ Three tiers of substitution candidates per ingredient:
 
 ## How Reasoning & Candidate Selection Works
 
-Agnes uses a **cascading 3-tier architecture** to find substitutes, combining deterministic DB queries with LLM reasoning:
+Agnes uses a **cascading 3-tier architecture** combining deterministic DB queries with LLM reasoning:
 
-```
-Ingredient (CAS known?)
-       │
-       ▼
-┌─────────────────────────────────────────────────────────────┐
-│ Tier 1 — Same molecule, different supplier                  │
-│ SQL: match cas_number, exclude current supplier             │
-│ Ordered by price ASC. Drop-in replacement, no reformulation.│
-└─────────────────────────────────────────────────────────────┘
-       │  (runs in parallel)
-       ▼
-┌─────────────────────────────────────────────────────────────┐
-│ Tier 2 — Same functional role, compliance-compatible        │
-│ SQL: match functional_role + hard filters:                  │
-│   patent_lock != yes, market_ban_eu matches, vegan matches  │
-│ Different molecule — requires reformulation review.         │
-└─────────────────────────────────────────────────────────────┘
-       │  (runs in parallel)
-       ▼
-┌─────────────────────────────────────────────────────────────┐
-│ Tier 3 — Gemini AI picks the single best candidate          │
-│ Input: top-5 Tier 1 + top-5 Tier 2 + compliance profile    │
-│         + user priority weights (sliders 1–10)              │
-│ Output: recommendation + confidence + 4-factor reasoning:  │
-│   functional equivalence · compliance fit ·                 │
-│   supply risk · cost impact                                 │
-└─────────────────────────────────────────────────────────────┘
-```
+| Tier | Candidates | Ranking |
+|------|-----------|---------|
+| **Tier 1** — same CAS, different supplier | SQL match on `cas_number` | 5-dim weighted score (sliders) |
+| **Tier 2** — same functional role, compliance-compatible | SQL filter: role match + patent_lock≠yes + market/vegan compatible | 5-dim weighted score |
+| **Tier 3** — Gemini picks one best overall | Top-5 Tier 1 + top-5 Tier 2 passed to Gemini with full compliance profile + slider weights | 4-factor reasoning trace: functional equivalence · compliance fit · supply risk · cost impact |
 
-**Per-row reasoning** in the Tier 1/2 tables is generated client-side from enrichment data fields (price, certifications, country, compliance status) and highlights which slider priorities each candidate satisfies.
-
-**"Why This Supplier?"** on the Analysis page is a separate Gemini call that writes a 3-4 sentence explanation for the top-ranked supplier, citing specific price points, certifications, and geographic diversification benefits from the enrichment DB.
-
-All reasoning is grounded in real enrichment data scraped from supplier websites — not hallucinated. Each claim links back to a source ref in the Sources accordion.
+Per-row reasoning in Tier 1/2 tables highlights which slider priorities each candidate satisfies. All claims link back to source refs in the Sources accordion — not hallucinated.
 
 ## Database Schema
 
