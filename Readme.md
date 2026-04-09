@@ -1,6 +1,14 @@
-# SupplyWise AI - Agnes Raw Material Intelligence
+# SupplyWise AI — Agnes Raw Material Intelligence
+
+> **Q-Hack Hackathon submission** · **[Live Demo → supplywiseai.vercel.app](https://supplywiseai.vercel.app)**
 
 An AI-powered supply chain decision-support system for CPG (Consumer Packaged Goods) companies, built for the **Q-Hack Hackathon**.
+
+## Quick Start
+
+1. Open **[supplywiseai.vercel.app](https://supplywiseai.vercel.app)**
+2. Click **"Start Demo"** on the dashboard for a voice-guided walkthrough (Agnes), _or_ manually pick any finished good → open its BOM → click a raw material → **Analyze**
+3. On the Analysis page: review the compliance grid, explore Tier 1/2 substitution candidates, read the AI reasoning card, and choose a substitute
 
 ## Challenge Overview
 
@@ -24,7 +32,7 @@ This app is deployed on **Vercel**. Push to main branch to deploy.
 | AI/LLM | Google Gemini 2.5 Flash |
 | Voice | ElevenLabs TTS + STT |
 | Charts | Recharts |
-| Enrichment Pipeline | Python (data_enrichment/) + Claude Code + Playwright MCP |
+| Enrichment Pipeline | Python (data_enrichment/) + Claude Code + Playwright MCP + Brave Search |
 
 ## Features
 
@@ -40,7 +48,7 @@ This app is deployed on **Vercel**. Push to main branch to deploy.
 - Navigate to detailed analysis
 
 ### Analysis Page
-- AI-powered supplier recommendations backed by real enrichment data
+- AI-powered supplier recommendations backed by real-world enrichment data
 - Supplier comparison charts (Bar + Radar)
 - **5 criteria sliders aligned to actual enrichment fields:**
   - Price / Cost (backed by `supplier_product.price_per_unit`)
@@ -48,7 +56,11 @@ This app is deployed on **Vercel**. Push to main branch to deploy.
   - Certification Fit (vegan/halal/kosher/non-GMO/organic match)
   - Supply Risk (patent lock, single manufacturer, geographic diversity)
   - Functional Fit (functional role, bioequivalence)
-- Gemini reasoning with enrichment context (not just 50-word generic output)
+- Gemini reasoning with enrichment context
+- Extended compliance grid: vegan, halal, non-GMO, organic, kosher, EU/US market bans, patent lock
+- Purchase/spec sheet links per supplier row
+- "Choose as substitute" action with confirmation banner
+- Sources accordion showing refs backing each claim
 
 ### Tiered Substitution Pipeline
 Three tiers of substitution candidates per ingredient:
@@ -60,13 +72,57 @@ Three tiers of substitution candidates per ingredient:
   - Supply risk assessment
   - Cost impact
 
+### Agnes Demo Mode
+- Click **"Start Demo"** on the dashboard to launch a full-screen voice-guided walkthrough
+- Animated 3D sphere with state-driven appearance (listening, thinking, speaking, navigating)
+- Voice commands parsed into app navigation (intent parser → React Router)
+- Demo-specific Gemini prompt with product context awareness
+
 ### Voice-Enabled Chat (Agnes)
-- Two-way voice conversation using ElevenLabs
-- Speech-to-Text (STT) with scribe_v1 model
-- Text-to-Speech (TTS) with multilingual v2
+- Floating chat panel on every page
+- Two-way voice conversation using ElevenLabs STT + TTS
+- **Google Search grounding**: Agnes detects price/regulation queries and calls Gemini's `googleSearch` tool for real-time web results, appending sources to its reply
 - Auto-stop recording on silence detection (900ms)
 - Gemini-powered AI responses with markdown rendering
-- Chat history with multiple sessions
+
+## How Reasoning & Candidate Selection Works
+
+Agnes uses a **cascading 3-tier architecture** to find substitutes, combining deterministic DB queries with LLM reasoning:
+
+```
+Ingredient (CAS known?)
+       │
+       ▼
+┌─────────────────────────────────────────────────────────────┐
+│ Tier 1 — Same molecule, different supplier                  │
+│ SQL: match cas_number, exclude current supplier             │
+│ Ordered by price ASC. Drop-in replacement, no reformulation.│
+└─────────────────────────────────────────────────────────────┘
+       │  (runs in parallel)
+       ▼
+┌─────────────────────────────────────────────────────────────┐
+│ Tier 2 — Same functional role, compliance-compatible        │
+│ SQL: match functional_role + hard filters:                  │
+│   patent_lock != yes, market_ban_eu matches, vegan matches  │
+│ Different molecule — requires reformulation review.         │
+└─────────────────────────────────────────────────────────────┘
+       │  (runs in parallel)
+       ▼
+┌─────────────────────────────────────────────────────────────┐
+│ Tier 3 — Gemini AI picks the single best candidate          │
+│ Input: top-5 Tier 1 + top-5 Tier 2 + compliance profile    │
+│         + user priority weights (sliders 1–10)              │
+│ Output: recommendation + confidence + 4-factor reasoning:  │
+│   functional equivalence · compliance fit ·                 │
+│   supply risk · cost impact                                 │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Per-row reasoning** in the Tier 1/2 tables is generated client-side from enrichment data fields (price, certifications, country, compliance status) and highlights which slider priorities each candidate satisfies.
+
+**"Why This Supplier?"** on the Analysis page is a separate Gemini call that writes a 3-4 sentence explanation for the top-ranked supplier, citing specific price points, certifications, and geographic diversification benefits from the enrichment DB.
+
+All reasoning is grounded in real enrichment data scraped from supplier websites — not hallucinated. Each claim links back to a source ref in the Sources accordion.
 
 ## Database Schema
 
@@ -78,24 +134,22 @@ product (1,025)├── finished-good (149)
 
 bom (149) ────► bom_component (1,528)
 
-supplier (40) ── supplier_product (1,633)
-                  └── enriched: country, price, certifications (418 rows)
+supplier (105) ── supplier_product (~2,000)
+                   └── enriched: country, price, certifications, refs, links
 
 component_normalized (876) ── raw_product_id → cas_number
-                               └── cas_number linked: 418 rows
+                               └── cas_number linked: 1,102 rows
 
-ingredient_profile (281) ── keyed by CAS number
+ingredient_profile (174) ── keyed by CAS number
   cas_number, canonical_name, functional_role, patent_lock,
   market_ban_eu/us, vegan/halal/kosher/non_gmo/organic status,
-  allergen_flags, label_form_claim
+  allergen_flags, label_form_claim, refs (JSONB)
 ```
 
 **AI-Populated Tables:**
 - `ingredient_profile` — compliance facts per compound (from Agnes enrichment pipeline)
 - `component_normalized` — slug → CAS bridge per product row
-- `substitution_candidate` — AI-generated substitution output
-- `compliance_verdict` — per-candidate regulatory analysis
-- `sourcing_recommendation` — per-BOM sourcing recommendations
+- `supplier_product` — extended with price, certs, links, refs from enrichment
 
 ## Project Structure
 
@@ -130,28 +184,25 @@ ingredient_profile (281) ── keyed by CAS number
 │       └── lib/
 │           └── api.ts               # Typed API client
 ├── data_enrichment/                # Agnes enrichment pipeline (Python)
+│   ├── enrichment_loop.md           # Claude Code kickoff prompt (paste into session)
 │   ├── backend/
-│   │   ├── next_enrichment.py       # Generate enrichment prompts
-│   │   ├── append_enrichment.py     # Append results to JSONL
-│   │   ├── enrichment_status.py     # Progress tracking
+│   │   ├── next_enrichment.py       # Generate per-pair enrichment prompts
+│   │   ├── append_enrichment.py     # Append results to JSONL (dedup check)
+│   │   ├── enrichment_status.py     # Progress tracking + summary
 │   │   ├── schemas.py               # Pydantic schema (EnrichmentRecord)
-│   │   └── mock_enrichment.json     # Example output
-│   └── docs/
-│       └── scraping_and_ingestion.md
-├── backend/                        # Node.js scripts
+│   │   └── mock_enrichment.json     # Example output format
+│   └── frontend/
+│       └── index.html               # Simple status UI
+├── backend/                        # Node.js ingestion scripts
 │   └── scripts/
-│       ├── migrate-sqlite-to-postgres.mjs  # SQLite → Postgres migration
-│       └── ingest_enrichments.mjs          # JSONL → Postgres ingest
-├── migrations/
-│   ├── 001_enrichment_columns.sql   # SQLite enrichment columns
-│   └── 002_enrichment_postgres.sql  # Postgres enrichment schema
+│       ├── ingest_enrichments.mjs          # enrichments.jsonl → Postgres
+│       ├── extract_discovered_suppliers.mjs # Parse discovered[] → new_suppliers.json
+│       └── ingest_discovered_suppliers.mjs  # new_suppliers.json → Postgres
 ├── enrichments/
-│   └── enrichments.jsonl            # 305 enriched records (137 unique pairs)
-├── knowledge_base/                  # Agnes domain knowledge (11 files)
-├── prompts/
-│   └── enrichment_loop.md           # Claude Code enrichment kickoff prompt
+│   ├── enrichments.jsonl            # 656 enriched records (output of pipeline)
+│   └── new_suppliers.json           # 70 discovered suppliers (extract output)
 ├── data/
-│   └── db.sqlite                    # Source SQLite database
+│   └── db.sqlite                    # Source SQLite database (local only)
 └── vercel.json                      # Vercel configuration
 ```
 
@@ -169,27 +220,42 @@ ingredient_profile (281) ── keyed by CAS number
 
 ## Running the Enrichment Pipeline
 
-The Agnes enrichment loop runs in Claude Code and web-searches each ingredient+supplier pair:
+The Agnes enrichment loop runs in a Claude Code session to save credits, could also run headlessly in the background. It web-searches each ingredient+supplier pair, if necessary navigates websites with playwright to find extra information and outputs structured JSONL records.
 
 ```bash
 # Check progress
 python data_enrichment/backend/enrichment_status.py --summary
 
-# Run enrichment loop (paste kickoff prompt into Claude Code session)
-cat prompts/enrichment_loop.md
+# Start a new enrichment session (paste kickoff prompt into Claude Code)
+cat data_enrichment/enrichment_loop.md
 
 # After enrichment, ingest into Postgres
 NODE_TLS_REJECT_UNAUTHORIZED=0 node backend/scripts/ingest_enrichments.mjs
 ```
 
-Current coverage: **305 records / 655 target pairs** (~47%) with 281 unique CAS numbers resolved.
+### Discovered Suppliers Pipeline
+
+During enrichment, the LLM may find suppliers not yet in the DB (stored in `discovered[]` fields). To extract and ingest them:
+
+```bash
+# 1. Extract discovered suppliers from JSONL → review file
+node backend/scripts/extract_discovered_suppliers.mjs
+# → writes enrichments/new_suppliers.json (70 entries)
+
+# 2. Dry-run to preview changes
+node backend/scripts/ingest_discovered_suppliers.mjs --dry-run
+
+# 3. Live ingest
+NODE_TLS_REJECT_UNAUTHORIZED=0 node backend/scripts/ingest_discovered_suppliers.mjs
+```
+
+The alias table in `extract_discovered_suppliers.mjs` handles deduplication — maps division/brand variants (e.g. "BASF Nutrition" → "BASF") and identifies suppliers already in DB (link-only, no INSERT).
 
 ## Local Development
 
 ```bash
 # Install dependencies
 cd frontend && npm install
-cd ../api && npm install
 
 # Set environment variables (copy and fill)
 cp .env.example .env
@@ -227,11 +293,12 @@ POSTGRES_SSL_REJECT_UNAUTHORIZED=false
 | Companies | 61 |
 | Finished Goods | 149 |
 | Raw Materials | 876 |
-| Suppliers | 40 |
-| Supplier-Product Links | 1,633 |
+| Suppliers | 105 (40 original + 65 discovered via enrichment) |
+| Supplier-Product Links | ~2,000 |
 | BOM Components | 1,528 |
-| Enriched ingredient profiles | 281 unique CAS numbers |
-| Enriched supplier offers | 418 supplier_product rows |
+| Enriched ingredient profiles | 174 unique CAS numbers |
+| Enriched supplier_product rows | 1,102 |
+| Enrichment JSONL records | 656 |
 
 ## License
 
