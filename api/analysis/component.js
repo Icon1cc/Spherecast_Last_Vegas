@@ -4,25 +4,198 @@ import { handleDbError } from "../lib/errors.js";
 import { validateId, validateAnalysisWeights } from "../lib/validation.js";
 import {
   GEMINI_DEFAULT_MODEL,
-  ANALYSIS_BASE_SCORE,
-  ANALYSIS_MAX_SCORE,
-  ANALYSIS_WEIGHT_NORMALIZATION,
-  ANALYSIS_SCORE_INCREMENT,
-  ANALYSIS_ALTERNATIVE_DEGRADATION,
   ANALYSIS_MAX_ALTERNATIVES,
 } from "../lib/constants.js";
 
+// ---------------------------------------------------------------------------
+// Evidence quality
+// The 8 compliance criteria we track — same set shown in the UI compliance grid.
+// "Verified" means the field is non-null and non-"unknown" in the DB.
+// ---------------------------------------------------------------------------
+const COMPLIANCE_CRITERIA = [
+  "market_ban_eu",
+  "market_ban_us",
+  "patent_lock",
+  "single_manufacturer",
+  "vegan_status",
+  "halal_status",
+  "kosher_status",
+  "non_gmo_status",
+];
+
+const CRITERIA_LABELS = {
+  market_ban_eu:      "EU market status",
+  market_ban_us:      "US market status",
+  patent_lock:        "Patent lock",
+  single_manufacturer:"Single manufacturer",
+  vegan_status:       "Vegan status",
+  halal_status:       "Halal status",
+  kosher_status:      "Kosher status",
+  non_gmo_status:     "Non-GMO status",
+};
+
+/**
+ * Compute evidence quality for one (component, supplier) pair.
+ * Returns: verified count, total criteria, missing list, refCount, and a 0–1 score.
+ * Refs are supplier-level — more refs = more claims were backed by source URLs.
+ */
+function computeEvidenceCriteria(component, supplierRefs) {
+  const missing = COMPLIANCE_CRITERIA.filter(f => {
+    const v = component[f];
+    return v == null || v === "unknown";
+  });
+  const verified = COMPLIANCE_CRITERIA.length - missing.length;
+  const fieldScore = verified / COMPLIANCE_CRITERIA.length;
+  const refCount = Array.isArray(supplierRefs) ? supplierRefs.length : 0;
+  const refBonus = Math.min(refCount * 0.025, 0.12); // each ref adds small confidence, capped at +0.12
+  return {
+    verified,
+    total: COMPLIANCE_CRITERIA.length,
+    missing: missing.map(f => CRITERIA_LABELS[f] ?? f),
+    refCount,
+    score: Math.min(Math.round((fieldScore + refBonus) * 100) / 100, 1.0),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Scoring dimensions — each maps 1:1 to one of the 5 UI sliders.
+// Missing data never scores 0 by itself; it receives a neutral 0.5 baseline
+// with an additional penalty proportional to how much the user weights that
+// criterion (via the slider). This makes uncertainty transparent and slider-
+// responsive: if you crank "Regulatory" to 10, an unknown EU ban hurts more.
+// ---------------------------------------------------------------------------
+
+function applyMissingPenalty(base, fieldKey, component, sliderWeight) {
+  const v = component[fieldKey];
+  if (v != null && v !== "unknown") return base; // data present, no penalty
+  const penalty = 0.08 + (sliderWeight / 10) * 0.17; // 0.08–0.25 range
+  return Math.max(base - penalty, 0.0);
+}
+
+/** Price: relative rank within supplier set. Cheapest = 1.0, priciest = 0.0, unknown = 0.5. */
+function dim_price(supplier, allSuppliers) {
+  const prices = allSuppliers.map(s => s.price_per_unit).filter(p => p != null);
+  if (!prices.length || supplier.price_per_unit == null) return 0.5;
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  if (max === min) return 0.8; // all same price — fine but not differentiated
+  return 1 - (supplier.price_per_unit - min) / (max - min);
+}
+
+/**
+ * Regulatory: hard 0 for any active ban; 1.0 for both markets permitted.
+ * Unknown fields receive neutral 0.5 minus evidence penalty scaled by slider weight.
+ */
+function dim_regulatory(component, weights) {
+  const eu = component.market_ban_eu;
+  const us = component.market_ban_us;
+  if (eu === "banned" || us === "banned") return 0.0; // hard disqualifier
+  const euBase = eu === "permitted" ? 1.0 : 0.5;
+  const usBase = us === "permitted" ? 1.0 : 0.5;
+  const euScore = applyMissingPenalty(euBase, "market_ban_eu", component, weights.regulatory);
+  const usScore = applyMissingPenalty(usBase, "market_ban_us", component, weights.regulatory);
+  return (euScore + usScore) / 2;
+}
+
+/**
+ * Certification fit: supplier's product-level certs matched against what
+ * the ingredient requires (from ingredient_profile). No cert data from
+ * supplier = 0.5 minus evidence penalty scaled by certFit slider weight.
+ */
+function dim_certFit(supplier, component, weights) {
+  const required = [];
+  if (component.vegan_status === "yes")
+    required.push({ key: "vegan", profileField: "vegan_status" });
+  if (component.halal_status === "yes" || component.halal_status === "compliant")
+    required.push({ key: "halal", profileField: "halal_status" });
+  if (component.kosher_status === "yes" || component.kosher_status === "compliant")
+    required.push({ key: "kosher", profileField: "kosher_status" });
+  if (component.non_gmo_status === "yes")
+    required.push({ key: "non_gmo", profileField: "non_gmo_status" });
+  if (component.organic_status === "yes")
+    required.push({ key: "organic", profileField: "organic_status" });
+
+  if (!required.length) {
+    // Ingredient has no cert requirements — decent baseline, slight unknown penalty
+    return applyMissingPenalty(0.75, "vegan_status", component, weights.certFit);
+  }
+
+  const certs = supplier.certifications;
+  if (!certs || !Object.keys(certs).length) {
+    const penalty = 0.15 + (weights.certFit / 10) * 0.2;
+    return Math.max(0.5 - penalty, 0.0);
+  }
+  const certKeys = Object.keys(certs).map(k => k.toLowerCase().replace(/[-\s]/g, "_"));
+  const matched = required.filter(({ key }) => certKeys.some(k => k.includes(key)));
+  return matched.length / required.length;
+}
+
+/**
+ * Supply risk: patent lock is a hard 0; single-manufacturer compounds the risk;
+ * geographic diversity and number of available suppliers add resilience.
+ * Unknown patent/single-manufacturer fields are penalised by slider weight.
+ */
+function dim_supplyRisk(supplier, allSuppliers, component, weights) {
+  if (component.patent_lock === "yes") return 0.0; // hard disqualifier
+  let base = component.patent_lock === "no" ? 0.9
+    : applyMissingPenalty(0.65, "patent_lock", component, weights.supplyRisk);
+
+  if (component.single_manufacturer === "yes") {
+    base *= 0.35; // severe concentration risk
+  } else if (component.single_manufacturer === "no") {
+    base = Math.min(base * 1.1, 1.0);
+  } else {
+    base = applyMissingPenalty(base, "single_manufacturer", component, weights.supplyRisk);
+  }
+
+  // Geographic diversity bonus — more unique countries in the supplier set = lower concentration risk
+  const uniqueCountries = new Set(allSuppliers.map(s => s.country).filter(Boolean)).size;
+  base = Math.min(base + Math.min((uniqueCountries - 1) * 0.05, 0.2), 1.0);
+
+  // Supplier count bonus — more options = more resilience
+  base = Math.min(base + Math.min((allSuppliers.length - 1) * 0.03, 0.15), 1.0);
+
+  return base;
+}
+
+/** Functional fit: always 1.0 for Tier-1 (same CAS = same molecule = full fit). */
+function dim_functionalFit() {
+  return 1.0;
+}
+
+/**
+ * Composite weighted score for one supplier across all 5 dimensions.
+ * Returns: score in [0, 1] + per-dimension breakdown for UI transparency.
+ */
+function computeSupplierScore(supplier, allSuppliers, component, weights) {
+  const { price: wP, regulatory: wR, certFit: wC, supplyRisk: wS, functionalFit: wF } = weights;
+  const totalW = wP + wR + wC + wS + wF;
+  const dims = {
+    price:      dim_price(supplier, allSuppliers),
+    regulatory: dim_regulatory(component, weights),
+    certFit:    dim_certFit(supplier, component, weights),
+    supplyRisk: dim_supplyRisk(supplier, allSuppliers, component, weights),
+    functional: dim_functionalFit(),
+  };
+  const raw = (
+    wP * dims.price +
+    wR * dims.regulatory +
+    wC * dims.certFit +
+    wS * dims.supplyRisk +
+    wF * dims.functional
+  ) / totalW;
+  return { score: Math.round(raw * 1000) / 1000, dims };
+}
+
+// ---------------------------------------------------------------------------
+// Main handler
+// ---------------------------------------------------------------------------
+
 /**
  * POST /api/analysis/component
- * Analyzes suppliers for a component and returns weighted recommendations.
- * @param {Object} req.body - Request body
- * @param {number} req.body.componentId - Component/product ID to analyze
- * @param {Object} req.body.weights - Weight priorities (each 1-10)
- * @param {number} req.body.weights.price - Price / cost priority
- * @param {number} req.body.weights.regulatory - Regulatory compliance (EU/US market bans)
- * @param {number} req.body.weights.certFit - Certification fit (vegan/halal/kosher/non-GMO/organic)
- * @param {number} req.body.weights.supplyRisk - Supply risk (patent lock, single manufacturer, geography)
- * @param {number} req.body.weights.functionalFit - Functional fit (role match, bioequivalence)
+ * Analyzes and ranks suppliers for a component using a data-driven weighted
+ * scoring model. Each of the 5 slider weights maps directly to one scoring
+ * dimension. Evidence quality per supplier is returned alongside the score.
  */
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -33,21 +206,16 @@ export default async function handler(req, res) {
   const { componentId: rawComponentId, weights: rawWeights } = req.body || {};
 
   const { valid: idValid, id: componentId, error: idError } = validateId(rawComponentId);
-  if (!idValid) {
-    return res.status(400).json({ error: idError || "componentId is required" });
-  }
+  if (!idValid) return res.status(400).json({ error: idError || "componentId is required" });
 
   const { valid: weightsValid, weights, error: weightsError } = validateAnalysisWeights(rawWeights);
-  if (!weightsValid) {
-    return res.status(400).json({ error: weightsError || "weights object is required" });
-  }
+  if (!weightsValid) return res.status(400).json({ error: weightsError || "weights object is required" });
 
   let pool;
   try {
     pool = createPool();
 
-    // Get component + enrichment profile in one query
-    const componentQuery = `
+    const componentResult = await pool.query(`
       SELECT
         p.id, p.sku AS name,
         cn.cas_number,
@@ -61,121 +229,102 @@ export default async function handler(req, res) {
       LEFT JOIN ingredient_profile ip ON ip.cas_number = cn.cas_number
       WHERE p.id = $1
       LIMIT 1
-    `;
-    const componentResult = await pool.query(componentQuery, [componentId]);
+    `, [componentId]);
 
-    if (componentResult.rows.length === 0) {
+    if (!componentResult.rows.length) {
       return res.status(404).json({ error: "Component not found" });
     }
-
     const component = componentResult.rows[0];
 
-    // Get suppliers with enrichment data for this component
-    const suppliersQuery = `
-      SELECT s.id, s.name, sp.country, sp.region, sp.price_per_unit, sp.price_currency, sp.price_unit, sp.certifications, sp.refs
+    // Fetch all suppliers — include refs for evidence quality computation
+    const suppliersResult = await pool.query(`
+      SELECT s.id, s.name, sp.country, sp.region,
+             sp.price_per_unit, sp.price_currency, sp.price_unit,
+             sp.certifications, sp.refs
       FROM supplier_product sp
       JOIN supplier s ON sp.supplier_id = s.id
       WHERE sp.product_id = $1
-      ORDER BY sp.price_per_unit ASC NULLS LAST, s.name
-    `;
-    const suppliersResult = await pool.query(suppliersQuery, [componentId]);
+    `, [componentId]);
     const suppliers = suppliersResult.rows;
 
-    // Calculate scores using constants
-    const { price, regulatory, certFit, supplyRisk, functionalFit } = weights;
-    const totalWeight = price + regulatory + certFit + supplyRisk + functionalFit;
-    const normalizedScore = ANALYSIS_BASE_SCORE + (totalWeight / ANALYSIS_WEIGHT_NORMALIZATION) * ANALYSIS_SCORE_INCREMENT;
-    const baseScore = Math.min(normalizedScore, ANALYSIS_MAX_SCORE);
+    if (!suppliers.length) {
+      return res.status(200).json({
+        component: { id: component.id, name: component.name },
+        recommendedSupplier: { name: "No suppliers available", score: 0, reasoning: "No suppliers found.", reasoningDetails: null },
+        alternatives: [],
+        metrics: weights,
+        supplierCount: 0,
+      });
+    }
 
-    const recommendedSupplier = suppliers[0];
-    const alternatives = suppliers.slice(1, ANALYSIS_MAX_ALTERNATIVES + 1);
+    // Score and rank all suppliers
+    const scored = suppliers
+      .map(s => {
+        const { score, dims } = computeSupplierScore(s, suppliers, component, weights);
+        const evidence = computeEvidenceCriteria(component, s.refs);
+        return { ...s, score, dims, evidence };
+      })
+      .sort((a, b) => b.score - a.score);
 
-    // Build detailed reasoning
+    const recommendedSupplier = scored[0];
+    const alternatives = scored.slice(1, ANALYSIS_MAX_ALTERNATIVES + 1);
+
+    // Gemini reasoning (optional enrichment — explains the top pick in plain language)
     let reasoning = "";
-    let reasoningDetails = null;
+    let reasoningDetails = {
+      summary: `${recommendedSupplier.name} scores highest for ${component.canonical_name ?? component.name} given your priorities.`,
+      price_analysis: recommendedSupplier.price_per_unit
+        ? `Listed at ${recommendedSupplier.price_currency ?? "$"}${recommendedSupplier.price_per_unit}/${recommendedSupplier.price_unit ?? "unit"}.`
+        : "Pricing information not available — contact supplier for a quote.",
+      compliance: buildComplianceNote(component),
+      supply_chain: buildSupplyChainNote(component, suppliers.length),
+      certifications: buildCertNote(recommendedSupplier.certifications),
+    };
 
-    if (recommendedSupplier) {
-      // Build structured reasoning details
-      reasoningDetails = {
-        summary: `${recommendedSupplier.name} is recommended as the top supplier for ${component.canonical_name ?? component.name}.`,
-        price_analysis: recommendedSupplier.price_per_unit
-          ? `Offers competitive pricing at ${recommendedSupplier.price_currency ?? '$'}${recommendedSupplier.price_per_unit}/${recommendedSupplier.price_unit ?? 'unit'}.`
-          : "Pricing information pending - contact supplier for quotes.",
-        compliance: buildComplianceReasoning(component),
-        supply_chain: buildSupplyChainReasoning(component, recommendedSupplier, suppliers.length),
-        certifications: buildCertificationReasoning(recommendedSupplier.certifications, component),
-      };
+    const geminiKey = process.env.GEMINI_API_KEY?.trim();
+    if (geminiKey) {
+      try {
+        const genAI = new GoogleGenerativeAI(geminiKey);
+        const model = genAI.getGenerativeModel({
+          model: GEMINI_DEFAULT_MODEL,
+          generationConfig: { temperature: 0.4, maxOutputTokens: 600 },
+        });
 
-      // Get AI-enhanced reasoning if Gemini key available
-      const geminiKey = process.env.GEMINI_API_KEY?.trim();
-      if (geminiKey) {
-        try {
-          const genAI = new GoogleGenerativeAI(geminiKey);
-          const model = genAI.getGenerativeModel({
-            model: GEMINI_DEFAULT_MODEL,
-            generationConfig: { temperature: 0.4, maxOutputTokens: 600 }
-          });
+        const supplierDetails = scored.slice(0, 5).map(s => {
+          const p = s.price_per_unit ? `${s.price_currency ?? "$"}${s.price_per_unit}/${s.price_unit ?? "unit"}` : "price unknown";
+          const c = s.certifications ? Object.entries(s.certifications).map(([k, v]) => `${k}:${v}`).join(", ") : "none";
+          return `- ${s.name} (${s.country ?? "unknown"}): ${p}, certs: ${c}, score: ${(s.score * 100).toFixed(0)}%`;
+        }).join("\n");
 
-          const supplierDetails = suppliers.slice(0, 5).map(s => {
-            const price = s.price_per_unit ? `${s.price_currency ?? '$'}${s.price_per_unit}/${s.price_unit ?? 'unit'}` : 'price unknown';
-            const certs = s.certifications ? Object.entries(s.certifications).map(([k,v]) => `${k}:${v}`).join(', ') : 'none';
-            return `- ${s.name} (${s.country ?? 'unknown'}): ${price}, certifications: ${certs}`;
-          }).join('\n');
+        const prompt = `You are a supply chain advisor. Explain in 3–4 sentences why ${recommendedSupplier.name} is the top-ranked supplier for ${component.canonical_name ?? component.name}.
 
-          const prompt = `You are a supply chain advisor for CPG/dietary supplement manufacturing. Analyze and recommend a supplier.
+Ingredient: ${component.canonical_name ?? component.name} | CAS: ${component.cas_number ?? "unknown"} | Role: ${component.functional_role ?? "unknown"}
+EU ban: ${component.market_ban_eu ?? "unknown"} | US ban: ${component.market_ban_us ?? "unknown"} | Patent lock: ${component.patent_lock ?? "unknown"}
+Vegan: ${component.vegan_status ?? "unknown"} | Halal: ${component.halal_status ?? "unknown"}
 
-INGREDIENT: ${component.canonical_name ?? component.name}
-CAS NUMBER: ${component.cas_number ?? 'unknown'}
-FUNCTIONAL ROLE: ${component.functional_role ?? 'unknown'}
+User priorities (1–10): Price=${weights.price} Regulatory=${weights.regulatory} CertFit=${weights.certFit} SupplyRisk=${weights.supplyRisk} FunctionalFit=${weights.functionalFit}
 
-COMPLIANCE PROFILE:
-- Vegan: ${component.vegan_status ?? 'unknown'}
-- Halal: ${component.halal_status ?? 'unknown'}
-- Kosher: ${component.kosher_status ?? 'unknown'}
-- Non-GMO: ${component.non_gmo_status ?? 'unknown'}
-- EU Market: ${component.market_ban_eu ?? 'unknown'}
-- US Market: ${component.market_ban_us ?? 'unknown'}
-- Patent Lock: ${component.patent_lock ?? 'unknown'}
-- Single Manufacturer: ${component.single_manufacturer ?? 'unknown'}
-
-USER PRIORITIES (1-10):
-- Price/Cost: ${price}
-- Regulatory Compliance: ${regulatory}
-- Certification Fit: ${certFit}
-- Supply Risk: ${supplyRisk}
-- Functional Fit: ${functionalFit}
-
-AVAILABLE SUPPLIERS:
+Ranked suppliers:
 ${supplierDetails}
 
-Based on the user's priorities, explain why ${recommendedSupplier.name} is the BEST choice. Provide:
-1. A 1-sentence summary of why they're #1
-2. Key advantages (price, compliance, geography, certifications)
-3. Any considerations or trade-offs
+Focus on why the #1 pick wins on the user's top priorities. Cite specific data points (price, certs, geography). Be concise.`;
 
-Keep response to 3-4 sentences total, focused on VALUE to the buyer.`;
-
-          const result = await model.generateContent(prompt);
-          reasoning = result.response.text().trim();
-        } catch (aiErr) {
-          console.error("AI reasoning error:", aiErr);
-          // Fall through to deterministic reasoning
-        }
+        const result = await model.generateContent(prompt);
+        reasoning = result.response.text().trim();
+      } catch (err) {
+        console.error("Gemini reasoning error:", err);
       }
+    }
 
-      // Fallback to deterministic reasoning if AI failed
-      if (!reasoning) {
-        reasoning = buildDeterministicReasoning(recommendedSupplier, component, weights, suppliers.length);
-      }
-    } else {
-      reasoning = "No suppliers found for this component in the database.";
+    if (!reasoning) {
+      reasoning = buildFallbackReasoning(recommendedSupplier, component, weights, suppliers.length);
     }
 
     return res.status(200).json({
       component: { id: component.id, name: component.name },
-      recommendedSupplier: recommendedSupplier ? {
+      recommendedSupplier: {
         name: recommendedSupplier.name,
-        score: Math.round(baseScore * 100) / 100,
+        score: recommendedSupplier.score,
         reasoning,
         reasoningDetails,
         country: recommendedSupplier.country,
@@ -184,20 +333,19 @@ Keep response to 3-4 sentences total, focused on VALUE to the buyer.`;
         priceUnit: recommendedSupplier.price_unit,
         certifications: recommendedSupplier.certifications,
         refs: recommendedSupplier.refs,
-      } : {
-        name: "No suppliers available",
-        score: 0,
-        reasoning: "No suppliers found for this component.",
-        reasoningDetails: null,
+        scoreDims: recommendedSupplier.dims,
+        evidenceCriteria: recommendedSupplier.evidence,
       },
-      alternatives: alternatives.map((s, i) => ({
+      alternatives: alternatives.map(s => ({
         name: s.name,
-        score: Math.round((baseScore - ANALYSIS_ALTERNATIVE_DEGRADATION * (i + 1)) * 100) / 100,
-        reasoning: buildAlternativeReasoning(s, recommendedSupplier),
+        score: s.score,
+        reasoning: buildAlternativeNote(s, recommendedSupplier),
         country: s.country,
         price: s.price_per_unit,
+        scoreDims: s.dims,
+        evidenceCriteria: s.evidence,
       })),
-      metrics: { price, regulatory, certFit, supplyRisk, functionalFit },
+      metrics: weights,
       supplierCount: suppliers.length,
     });
   } catch (error) {
@@ -207,98 +355,47 @@ Keep response to 3-4 sentences total, focused on VALUE to the buyer.`;
   }
 }
 
-function buildComplianceReasoning(component) {
-  const items = [];
-  if (component.market_ban_eu === 'permitted') items.push('EU market approved');
-  if (component.market_ban_us === 'permitted') items.push('US market approved');
-  if (component.vegan_status === 'yes') items.push('Vegan certified');
-  if (component.halal_status === 'compliant') items.push('Halal compliant');
-  if (component.kosher_status === 'compliant') items.push('Kosher compliant');
+// ---------------------------------------------------------------------------
+// Reasoning helpers
+// ---------------------------------------------------------------------------
 
-  return items.length > 0
-    ? `Compliance: ${items.join(', ')}.`
-    : 'Compliance status: verify with supplier documentation.';
+function buildComplianceNote(c) {
+  const ok = [];
+  if (c.market_ban_eu === "permitted") ok.push("EU approved");
+  if (c.market_ban_us === "permitted") ok.push("US approved");
+  if (c.vegan_status === "yes") ok.push("vegan");
+  if (c.halal_status === "compliant" || c.halal_status === "yes") ok.push("halal");
+  return ok.length ? `Compliance: ${ok.join(", ")}.` : "Compliance data partially unverified — check supplier documentation.";
 }
 
-function buildSupplyChainReasoning(component, supplier, totalSuppliers) {
-  const risks = [];
-  const benefits = [];
-
-  if (component.single_manufacturer === 'yes') {
-    risks.push('single-manufacturer ingredient');
-  } else if (totalSuppliers > 2) {
-    benefits.push(`${totalSuppliers} suppliers available for diversification`);
-  }
-
-  if (component.patent_lock === 'yes') {
-    risks.push('patent restrictions may apply');
-  } else if (component.patent_lock === 'no') {
-    benefits.push('no patent restrictions');
-  }
-
-  if (supplier.country) {
-    benefits.push(`sourced from ${supplier.country}`);
-  }
-
-  if (risks.length > 0) {
-    return `Supply considerations: ${risks.join(', ')}. ${benefits.length > 0 ? `Advantages: ${benefits.join(', ')}.` : ''}`;
-  }
-  return benefits.length > 0 ? `Supply advantages: ${benefits.join(', ')}.` : 'Standard supply chain profile.';
+function buildSupplyChainNote(c, n) {
+  const notes = [];
+  if (c.patent_lock === "yes") notes.push("patent-restricted compound");
+  if (c.single_manufacturer === "yes") notes.push("single-manufacturer — high concentration risk");
+  if (n > 2) notes.push(`${n} suppliers available for multi-source strategy`);
+  return notes.length ? notes.join("; ") + "." : "Standard supply chain profile.";
 }
 
-function buildCertificationReasoning(certifications, component) {
-  if (!certifications || Object.keys(certifications).length === 0) {
-    return 'Certifications: contact supplier for documentation.';
-  }
-  const certList = Object.entries(certifications).map(([k, v]) => `${k}: ${v}`).join(', ');
-  return `Certifications: ${certList}.`;
+function buildCertNote(certs) {
+  if (!certs || !Object.keys(certs).length) return "Certifications: request documentation from supplier.";
+  return `Certifications: ${Object.entries(certs).map(([k, v]) => `${k}: ${v}`).join(", ")}.`;
 }
 
-function buildDeterministicReasoning(supplier, component, weights, supplierCount) {
+function buildAlternativeNote(s, top) {
   const parts = [];
-
-  parts.push(`${supplier.name} is recommended for ${component.canonical_name ?? component.name}`);
-
-  // Price reasoning
-  if (supplier.price_per_unit) {
-    parts.push(`offering ${supplier.price_currency ?? '$'}${supplier.price_per_unit}/${supplier.price_unit ?? 'unit'}`);
+  if (s.country && s.country !== top.country) parts.push(`${s.country} — geographic diversification`);
+  if (s.price_per_unit != null && top.price_per_unit != null) {
+    parts.push(s.price_per_unit < top.price_per_unit ? "lower price" : "premium pricing");
   }
-
-  // Location
-  if (supplier.country) {
-    parts.push(`based in ${supplier.country}`);
-  }
-
-  // Compliance highlights
-  const compliance = [];
-  if (component.market_ban_eu === 'permitted') compliance.push('EU approved');
-  if (component.market_ban_us === 'permitted') compliance.push('US approved');
-  if (compliance.length > 0) {
-    parts.push(`with ${compliance.join(' and ')} market access`);
-  }
-
-  // Supply chain
-  if (supplierCount > 1) {
-    parts.push(`This supplier leads ${supplierCount} available options, providing supply chain flexibility.`);
-  }
-
-  return parts.join(', ') + '.';
+  const gap = ((top.score - s.score) * 100).toFixed(0);
+  parts.push(`${gap}pt below top pick`);
+  return parts.join(" · ") + ".";
 }
 
-function buildAlternativeReasoning(altSupplier, recommendedSupplier) {
-  const parts = ['Alternative supplier'];
-
-  if (altSupplier.country && altSupplier.country !== recommendedSupplier?.country) {
-    parts.push(`in ${altSupplier.country} for geographic diversification`);
-  }
-
-  if (altSupplier.price_per_unit && recommendedSupplier?.price_per_unit) {
-    if (altSupplier.price_per_unit < recommendedSupplier.price_per_unit) {
-      parts.push('with lower pricing');
-    } else if (altSupplier.price_per_unit > recommendedSupplier.price_per_unit) {
-      parts.push('at premium pricing');
-    }
-  }
-
-  return parts.join(' ') + '.';
+function buildFallbackReasoning(s, component, weights, n) {
+  const parts = [`${s.name} leads on the current priority weighting`];
+  if (s.price_per_unit) parts.push(`priced at ${s.price_currency ?? "$"}${s.price_per_unit}/${s.price_unit ?? "unit"}`);
+  if (s.country) parts.push(`based in ${s.country}`);
+  if (n > 1) parts.push(`${n} total suppliers provide multi-source flexibility`);
+  return parts.join(", ") + ".";
 }

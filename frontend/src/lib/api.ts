@@ -41,12 +41,30 @@ export interface AnalysisWeights {
   functionalFit: number;
 }
 
+export interface EvidenceCriteria {
+  verified: number;
+  total: number;
+  missing: string[];   // human-readable criterion names that are unverified
+  refCount: number;
+  score: number;       // 0–1 overall evidence quality
+}
+
+export interface ScoreDims {
+  price: number;
+  regulatory: number;
+  certFit: number;
+  supplyRisk: number;
+  functional: number;
+}
+
 export interface Supplier {
   name: string;
   score: number;
   reasoning: string;
   country?: string;
   price?: number;
+  scoreDims?: ScoreDims;
+  evidenceCriteria?: EvidenceCriteria;
 }
 
 export interface ReasoningDetails {

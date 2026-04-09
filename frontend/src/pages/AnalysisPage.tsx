@@ -46,6 +46,7 @@ import {
   type SubstitutionResponse,
   type SubstitutionTier1,
   type SubstitutionTier2,
+  type EvidenceCriteria,
 } from "@/lib/api";
 
 const SLIDER_CONFIG = [
@@ -73,6 +74,28 @@ function ComplianceBadge({ value }: { value: string | null | undefined }) {
   if (value === "no" || value === "banned" || value === "non_compliant")
     return <span className="inline-flex items-center gap-1 text-xs text-red-500"><XCircle className="w-3 h-3" />{value}</span>;
   return <span className="inline-flex items-center gap-1 text-xs text-yellow-600"><HelpCircle className="w-3 h-3" />{value}</span>;
+}
+
+/**
+ * Shows how many of the 8 compliance criteria are verified in the DB for this supplier.
+ * Missing criteria are listed so judges/users can see exactly what's unverified.
+ */
+function EvidenceBadge({ evidence }: { evidence: EvidenceCriteria | undefined }) {
+  if (!evidence) return null;
+  const { verified, total, missing, refCount } = evidence;
+  const ratio = verified / total;
+  const color = ratio >= 0.75 ? "text-green-700 bg-green-50 border-green-200"
+    : ratio >= 0.5 ? "text-yellow-700 bg-yellow-50 border-yellow-200"
+    : "text-red-700 bg-red-50 border-red-200";
+  return (
+    <div className={`inline-flex flex-col gap-0.5 px-2 py-1 rounded border text-xs ${color}`}>
+      <span className="font-semibold">{verified}/{total} criteria verified</span>
+      {refCount > 0 && <span className="text-xs opacity-75">{refCount} source ref{refCount !== 1 ? "s" : ""}</span>}
+      {missing.length > 0 && (
+        <span className="text-xs opacity-75">Unverified: {missing.join(", ")}</span>
+      )}
+    </div>
+  );
 }
 
 function formatPriceLabel(
@@ -446,8 +469,9 @@ const AnalysisPage = () => {
                 </div>
                 <div className="shrink-0 flex flex-col items-start sm:items-end gap-2">
                   <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-success/10 text-success">
-                    {Math.round(analysis.recommendedSupplier.score * 100)}% confidence
+                    {Math.round(analysis.recommendedSupplier.score * 100)}% match score
                   </span>
+                  <EvidenceBadge evidence={analysis.recommendedSupplier.evidenceCriteria} />
                   <button
                     onClick={() => handleBuyNow(analysis.recommendedSupplier.name)}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
@@ -520,8 +544,8 @@ const AnalysisPage = () => {
                   </h3>
                   <ul className="space-y-2">
                     {analysis.alternatives.map((alt) => (
-                      <li key={alt.name} className="flex items-center justify-between text-sm">
-                        <div>
+                      <li key={alt.name} className="flex items-start justify-between gap-3 text-sm py-1">
+                        <div className="flex-1 min-w-0">
                           <span className="font-medium">{alt.name}</span>
                           {alt.country && (
                             <span className="text-muted-foreground ml-1 text-xs">({alt.country})</span>
@@ -530,9 +554,12 @@ const AnalysisPage = () => {
                             — {alt.reasoning}
                           </span>
                         </div>
-                        <span className="text-muted-foreground font-medium">
-                          {Math.round(alt.score * 100)}%
-                        </span>
+                        <div className="shrink-0 flex flex-col items-end gap-1">
+                          <span className="text-muted-foreground font-medium">
+                            {Math.round(alt.score * 100)}%
+                          </span>
+                          <EvidenceBadge evidence={alt.evidenceCriteria} />
+                        </div>
                       </li>
                     ))}
                   </ul>
