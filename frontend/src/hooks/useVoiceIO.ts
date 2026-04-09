@@ -14,15 +14,15 @@ const ELEVENLABS_TTS_MODEL_ID =
 const ELEVENLABS_STT_MODEL_ID =
   import.meta.env.VITE_ELEVENLABS_STT_MODEL_ID?.trim() ?? "scribe_v1";
 
-// Voice detection constants
-const BASE_SILENCE_THRESHOLD = 0.03;
-const MIN_DYNAMIC_SILENCE_THRESHOLD = 0.02;
-const MAX_DYNAMIC_SILENCE_THRESHOLD = 0.09;
-const SILENCE_THRESHOLD_MULTIPLIER = 2.2;
-const NOISE_CALIBRATION_MS = 700;
-const SILENCE_DURATION_MS = 900;
-const NO_SPEECH_TIMEOUT_MS = 6000;
-const MAX_RECORDING_MS = 20000;
+// Voice detection constants - tuned for reliable speech detection
+const BASE_SILENCE_THRESHOLD = 0.015;       // Lower = more sensitive to quiet speech
+const MIN_DYNAMIC_SILENCE_THRESHOLD = 0.01; // Minimum threshold floor
+const MAX_DYNAMIC_SILENCE_THRESHOLD = 0.06; // Maximum threshold ceiling
+const SILENCE_THRESHOLD_MULTIPLIER = 1.8;   // How much above ambient noise to trigger
+const NOISE_CALIBRATION_MS = 500;           // Time to calibrate ambient noise
+const SILENCE_DURATION_MS = 1200;           // How long silence before stopping (ms)
+const NO_SPEECH_TIMEOUT_MS = 10000;         // Max wait for speech to start (10s)
+const MAX_RECORDING_MS = 30000;             // Max recording duration (30s)
 const TTS_CHUNK_MAX_CHARS = 180;
 const MIN_AUDIO_BYTES_FOR_STT = 4096;
 const RECORDER_MIME_CANDIDATES = [

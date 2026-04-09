@@ -178,10 +178,13 @@ export function useAgnesDemo(options: UseAgnesDemoOptions = {}): UseAgnesDemoRet
   const location = useLocation();
   const isProcessingRef = useRef(false);
   const pendingNavigationRef = useRef<NavigationTarget | null>(null);
+  const noSpeechRetryCountRef = useRef(0);
+  const MAX_NO_SPEECH_RETRIES = 3;
 
   // Voice I/O setup
   const voiceIO = useVoiceIO({
     onTranscript: useCallback((text: string) => {
+      noSpeechRetryCountRef.current = 0; // Reset retry count on successful transcript
       dispatch({ type: "USER_SPOKE", payload: text });
     }, []),
     onSpeechStart: useCallback(() => {
@@ -198,6 +201,22 @@ export function useAgnesDemo(options: UseAgnesDemoOptions = {}): UseAgnesDemoRet
     }, []),
     onError: useCallback((error: Error, context: string) => {
       console.error(`Voice error (${context}):`, error);
+
+      // Handle "No speech detected" gracefully - just restart listening
+      if (error.message.includes("No speech detected") || error.message.includes("too short")) {
+        noSpeechRetryCountRef.current++;
+        if (noSpeechRetryCountRef.current < MAX_NO_SPEECH_RETRIES) {
+          // Silently retry listening without bothering the user
+          dispatch({ type: "START_LISTENING" });
+          return;
+        }
+        // After max retries, reset count and continue listening
+        noSpeechRetryCountRef.current = 0;
+        dispatch({ type: "START_LISTENING" });
+        return;
+      }
+
+      // For other errors, report them
       dispatch({ type: "ERROR", payload: error.message });
       options.onError?.(error.message);
     }, [options]),
@@ -292,12 +311,17 @@ export function useAgnesDemo(options: UseAgnesDemoOptions = {}): UseAgnesDemoRet
     if (state.phase !== "GREETING") return;
 
     const doGreeting = async () => {
-      await voiceIO.speak(AGNES_GREETING);
+      try {
+        await voiceIO.speak(AGNES_GREETING);
+      } catch (err) {
+        console.error("Greeting TTS error:", err);
+      }
       dispatch({ type: "GREETING_COMPLETE" });
     };
 
     void doGreeting();
-  }, [state.phase, voiceIO]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.phase]); // Only depend on phase, not voiceIO (stable ref)
 
   // Effect: Handle LISTENING phase
   useEffect(() => {
@@ -308,10 +332,11 @@ export function useAgnesDemo(options: UseAgnesDemoOptions = {}): UseAgnesDemoRet
       if (state.phase === "LISTENING") {
         void voiceIO.startListening();
       }
-    }, 300);
+    }, 500); // Increased delay for better UX
 
     return () => clearTimeout(timer);
-  }, [state.phase, voiceIO]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.phase]); // Only depend on phase
 
   // Effect: Handle THINKING phase - send to AI
   useEffect(() => {
