@@ -76,6 +76,68 @@ async function getMaterialsForProduct(pool, productId) {
 }
 
 /**
+ * Searches raw materials by keyword extracted from the user message.
+ * Returns material_id + a product_id that contains it, so Agnes can navigate directly.
+ * @param {import('pg').Pool} pool
+ * @param {string} userMessage
+ * @returns {Promise<Array|null>} [{material_id, material_name, product_id, product_name}]
+ */
+async function searchMaterialsByKeyword(pool, userMessage) {
+  if (!pool) return null;
+
+  // Words to ignore when building the search — not ingredient names
+  const stopWords = new Set([
+    'vitamin', 'supplement', 'supplements', 'supply', 'supplier', 'suppliers',
+    'alternative', 'alternatives', 'sourcing', 'chain', 'product', 'products',
+    'material', 'ingredient', 'ingredients', 'about', 'looking', 'selling',
+    'want', 'need', 'have', 'find', 'show', 'tell', 'give', 'help', 'please',
+    'general', 'specific', 'terms', 'best', 'good', 'great', 'also', 'just',
+    'like', 'that', 'this', 'with', 'from', 'what', 'which', 'where', 'when',
+    'know', 'would', 'could', 'should', 'their', 'there', 'these', 'those',
+    'compare', 'comparison', 'analysis', 'analyze', 'navigate', 'page',
+  ]);
+
+  // Extract candidate keywords: 3+ char words not in stoplist
+  const words = (userMessage.match(/\b[a-zA-Z0-9][a-zA-Z0-9\-]{2,}\b/g) || [])
+    .map(w => w.toLowerCase())
+    .filter(w => !stopWords.has(w));
+
+  // Also detect "vitamin X" patterns explicitly
+  const vitaminMatch = userMessage.match(/vitamin\s+([a-z]\d*)/gi);
+  if (vitaminMatch) {
+    vitaminMatch.forEach(v => words.unshift(v.replace(/\s+/, ' ').toLowerCase()));
+  }
+
+  const keywords = [...new Set(words)].slice(0, 6);
+  if (keywords.length === 0) return null;
+
+  try {
+    // Build OR conditions: one ILIKE per keyword
+    const conditions = keywords.map((_, i) => `LOWER(rm.sku) ILIKE $${i + 1}`).join(' OR ');
+    const params = keywords.map(k => `%${k}%`);
+
+    const result = await pool.query(`
+      SELECT DISTINCT ON (rm.id)
+        rm.id   AS material_id,
+        rm.sku  AS material_name,
+        fg.id   AS product_id,
+        fg.sku  AS product_name
+      FROM product rm
+      JOIN bom          ON bom.raw_material_id  = rm.id
+      JOIN product fg   ON fg.id                = bom.finished_good_id
+      WHERE rm.type = 'raw-material'
+        AND (${conditions})
+      ORDER BY rm.id
+      LIMIT 5
+    `, params);
+
+    return result.rows.length > 0 ? result.rows : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Fetches database context for AI to reference.
  * @param {import('pg').Pool} pool - Database connection pool
  * @returns {Promise<Object|null>} Database statistics or null on failure
@@ -132,11 +194,17 @@ export default async function handler(req, res) {
     let dbContext = null;
     let products = null;
     let demoMaterials = null;
+    let ingredientMatches = null;
     let pool;
     try {
       pool = createPool();
       if (demoMode) {
-        products = await getProductsForDemo(pool);
+        // Run product fetch + ingredient search in parallel
+        [products, ingredientMatches] = await Promise.all([
+          getProductsForDemo(pool),
+          searchMaterialsByKeyword(pool, message),
+        ]);
+        // Also fetch materials for an explicitly referenced product ID
         const productIdMatch = message.match(/product\s*(?:id\s*)?(\d+)/i);
         if (productIdMatch) {
           const productId = parseInt(productIdMatch[1], 10);
@@ -161,7 +229,14 @@ export default async function handler(req, res) {
         .slice(0, 10)
         .map((product) => `- ID ${product.id}: ${product.name} (${product.company || "Unknown"})`)
         .join("\n");
-      contextPrompt += `\n\nAvailable products in database:\n${productList}\n\nWhen user asks about products or analysis, use these real product IDs in navigation commands.`;
+      contextPrompt += `\n\nAvailable finished goods:\n${productList}`;
+    }
+    if (demoMode && ingredientMatches && ingredientMatches.length > 0) {
+      // This is the key context: real material_id + product_id pairs Agnes can use directly in NAV commands
+      const matchList = ingredientMatches
+        .map(m => `- "${m.material_name}" → materialId=${m.material_id} in productId=${m.product_id} ("${m.product_name}")`)
+        .join("\n");
+      contextPrompt += `\n\nMatching raw materials found in database for this query:\n${matchList}\n\nUse these EXACT IDs in [NAV:ANALYSIS:productId:materialId:productName:materialName] commands. Do NOT invent IDs.`;
     }
     if (demoMode && demoMaterials && demoMaterials.length > 0) {
       const materialList = demoMaterials
