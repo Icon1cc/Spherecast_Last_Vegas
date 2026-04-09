@@ -111,6 +111,8 @@ const AnalysisPage = () => {
   const {
     data: substitution,
     isLoading: subLoading,
+    isError: isSubError,
+    error: subError,
   } = useQuery<SubstitutionResponse>({
     queryKey: ["substitution", componentId, weights],
     queryFn: () => getSubstitutionCandidates(componentId, weights),
@@ -347,6 +349,12 @@ const AnalysisPage = () => {
           <div className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
             <Loader2 className="w-4 h-4 animate-spin" />
             Loading substitution candidates...
+          </div>
+        )}
+
+        {isSubError && (
+          <div className="bg-destructive/10 text-destructive rounded-lg p-4 mb-6 text-sm">
+            Failed to load substitution candidates: {subError instanceof Error ? subError.message : "Unknown error"}
           </div>
         )}
 

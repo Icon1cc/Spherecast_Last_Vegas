@@ -127,8 +127,8 @@ export default async function handler(req, res) {
           AND ip.patent_lock != 'yes'
           AND (ip.market_ban_eu = $3 OR ip.market_ban_eu IS NULL OR $3 IS NULL)
           AND (
-            $4 IS NULL OR $4 = 'unknown'
-            OR ip.vegan_status = $4
+            $4::text IS NULL OR $4::text = 'unknown'
+            OR ip.vegan_status = $4::text
             OR ip.vegan_status = 'unknown'
           )
         ORDER BY sp.price_per_unit ASC NULLS LAST, ip.canonical_name
@@ -199,22 +199,26 @@ Respond ONLY with valid JSON in this exact format (no markdown, no explanation o
         const jsonText = text.replace(/^```json?\s*/i, "").replace(/```\s*$/i, "").trim();
         aiRecommendation = JSON.parse(jsonText);
       } catch (aiErr) {
-        // Fallback: best-effort from available tiers
-        const best = tier1[0] ?? tier2[0];
-        aiRecommendation = best
-          ? {
-              recommendation: tier1[0] ? tier1[0].supplier_name : tier2[0].canonical_name,
-              tier: tier1[0] ? 1 : 2,
-              confidence: 0.6,
-              reasoning: {
-                functional_equivalence: "Same functional role confirmed in ingredient database.",
-                compliance_fit: `Regulatory status: EU=${base.market_ban_eu}, vegan=${base.vegan_status}.`,
-                supply_risk: base.single_manufacturer === "yes" ? "Single-manufacturer ingredient — limited alternatives." : "Multiple suppliers available.",
-                cost_impact: null,
-              },
-            }
-          : null;
+        // Fall through to deterministic fallback below.
       }
+    }
+
+    // Deterministic fallback when Gemini is unavailable or fails.
+    if (!aiRecommendation) {
+      const best = tier1[0] ?? tier2[0];
+      aiRecommendation = best
+        ? {
+            recommendation: tier1[0] ? tier1[0].supplier_name : tier2[0].canonical_name,
+            tier: tier1[0] ? 1 : 2,
+            confidence: 0.6,
+            reasoning: {
+              functional_equivalence: "Same functional role confirmed in ingredient database.",
+              compliance_fit: `Regulatory status: EU=${base.market_ban_eu}, vegan=${base.vegan_status}.`,
+              supply_risk: base.single_manufacturer === "yes" ? "Single-manufacturer ingredient — limited alternatives." : "Multiple suppliers available.",
+              cost_impact: null,
+            },
+          }
+        : null;
     }
 
     return res.status(200).json({
