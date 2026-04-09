@@ -682,6 +682,9 @@ const AnalysisPage = () => {
                     ))}
                   </div>
                 )}
+                <p className="text-xs text-muted-foreground border-t pt-2">
+                  Some attributes (e.g. vegan, halal) may be inferred from the finished product — if a product carrying this ingredient is certified, the certification is inherited by the raw material.
+                </p>
               </div>
             )}
 

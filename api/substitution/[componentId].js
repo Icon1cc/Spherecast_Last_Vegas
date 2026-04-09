@@ -484,7 +484,8 @@ function scoreTier2Candidates(candidates, base, weights, labelFormVerdicts = new
     score += regulatoryScore * (weights.regulatory / totalWeight);
 
     // Certification fit score - check vegan/halal/kosher match
-    let certScore = 0;
+    // unknown on either side is skipped (no data = no credit); score normalised over known checks only.
+    // Treating unknown as a match would inflate scores for unverified compliance-critical attributes.
     const certChecks = [
       { candidate: candidate.vegan_status, base: base.vegan_status },
       { candidate: candidate.halal_status, base: base.halal_status },
@@ -492,15 +493,15 @@ function scoreTier2Candidates(candidates, base, weights, labelFormVerdicts = new
       { candidate: candidate.non_gmo_status, base: base.non_gmo_status },
       { candidate: candidate.organic_status, base: base.organic_status },
     ];
+    const knownChecks = certChecks.filter(c => c.candidate !== 'unknown' && c.base !== 'unknown');
     let matchCount = 0;
-    for (const check of certChecks) {
+    for (const check of knownChecks) {
       if (check.candidate === check.base ||
-          check.candidate === 'yes' || check.candidate === 'compliant' || check.candidate === 'certified' ||
-          check.base === 'unknown' || check.candidate === 'unknown') {
+          check.candidate === 'yes' || check.candidate === 'compliant' || check.candidate === 'certified') {
         matchCount++;
       }
     }
-    certScore = matchCount / certChecks.length;
+    const certScore = knownChecks.length > 0 ? matchCount / knownChecks.length : 0.5;
     score += certScore * (weights.certFit / totalWeight);
 
     // Supply risk score
