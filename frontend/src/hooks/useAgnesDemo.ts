@@ -9,7 +9,7 @@ import { useVoiceIO } from "./useVoiceIO";
 import { parseIntent, shouldEndDemo, hasNavigation } from "@/lib/intentParser";
 import type { DemoState, DemoAction, DemoPhase, TranscriptEntry, NavigationTarget } from "@/types/demo";
 
-const AGNES_GREETING = "Hello, I'm Agnes, your AI supply chain assistant. What would you like to explore today?";
+const AGNES_GREETING = "Hi, I'm Agnes. What would you like to explore?";
 
 const initialState: DemoState = {
   phase: "IDLE",
@@ -184,39 +184,33 @@ export function useAgnesDemo(options: UseAgnesDemoOptions = {}): UseAgnesDemoRet
   // Voice I/O setup
   const voiceIO = useVoiceIO({
     onTranscript: useCallback((text: string) => {
-      noSpeechRetryCountRef.current = 0; // Reset retry count on successful transcript
+      console.log("[Agnes] Got transcript:", text);
+      noSpeechRetryCountRef.current = 0;
       dispatch({ type: "USER_SPOKE", payload: text });
     }, []),
     onSpeechStart: useCallback(() => {
-      // Speech started
+      console.log("[Agnes] TTS started");
     }, []),
     onSpeechEnd: useCallback(() => {
+      console.log("[Agnes] TTS ended, dispatching SPEECH_COMPLETE");
       dispatch({ type: "SPEECH_COMPLETE" });
     }, []),
     onListeningStart: useCallback(() => {
-      // Listening started
+      console.log("[Agnes] Microphone listening started");
     }, []),
     onListeningEnd: useCallback(() => {
-      // Listening ended
+      console.log("[Agnes] Microphone listening ended");
     }, []),
     onError: useCallback((error: Error, context: string) => {
-      console.error(`Voice error (${context}):`, error);
+      console.error(`[Agnes] Voice error (${context}):`, error.message);
 
-      // Handle "No speech detected" gracefully - just restart listening
-      if (error.message.includes("No speech detected") || error.message.includes("too short")) {
-        noSpeechRetryCountRef.current++;
-        if (noSpeechRetryCountRef.current < MAX_NO_SPEECH_RETRIES) {
-          // Silently retry listening without bothering the user
-          dispatch({ type: "START_LISTENING" });
-          return;
-        }
-        // After max retries, reset count and continue listening
-        noSpeechRetryCountRef.current = 0;
+      // Handle STT errors - just restart listening
+      if (context === "stt") {
+        console.log("[Agnes] STT error, restarting listening...");
         dispatch({ type: "START_LISTENING" });
         return;
       }
 
-      // For other errors, report them
       dispatch({ type: "ERROR", payload: error.message });
       options.onError?.(error.message);
     }, [options]),
@@ -310,33 +304,36 @@ export function useAgnesDemo(options: UseAgnesDemoOptions = {}): UseAgnesDemoRet
   useEffect(() => {
     if (state.phase !== "GREETING") return;
 
+    console.log("[Agnes] GREETING phase - speaking greeting");
     const doGreeting = async () => {
       try {
         await voiceIO.speak(AGNES_GREETING);
       } catch (err) {
-        console.error("Greeting TTS error:", err);
+        console.error("[Agnes] Greeting TTS error:", err);
       }
+      console.log("[Agnes] Greeting complete, transitioning to LISTENING");
       dispatch({ type: "GREETING_COMPLETE" });
     };
 
     void doGreeting();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.phase]); // Only depend on phase, not voiceIO (stable ref)
+  }, [state.phase]);
 
   // Effect: Handle LISTENING phase
   useEffect(() => {
     if (state.phase !== "LISTENING") return;
 
-    // Small delay before starting to listen
+    console.log("[Agnes] LISTENING phase - starting mic in 400ms");
     const timer = setTimeout(() => {
       if (state.phase === "LISTENING") {
+        console.log("[Agnes] Starting microphone...");
         void voiceIO.startListening();
       }
-    }, 500); // Increased delay for better UX
+    }, 400);
 
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.phase]); // Only depend on phase
+  }, [state.phase]);
 
   // Effect: Handle THINKING phase - send to AI
   useEffect(() => {
@@ -346,16 +343,17 @@ export function useAgnesDemo(options: UseAgnesDemoOptions = {}): UseAgnesDemoRet
     if (!lastUserMessage) return;
 
     isProcessingRef.current = true;
+    console.log("[Agnes] THINKING phase - sending to AI:", lastUserMessage.text);
 
     const process = async () => {
       try {
         const response = await sendToAI(lastUserMessage.text, state.conversationHistory.slice(0, -1));
+        console.log("[Agnes] AI response received:", response.substring(0, 100));
         await processAIResponse(response);
       } catch (error) {
-        console.error("AI processing error:", error);
+        console.error("[Agnes] AI processing error:", error);
         dispatch({ type: "ERROR", payload: "I encountered an issue. Let me try again." });
-        // Recover by going back to listening
-        await voiceIO.speak("I had a small hiccup. Could you repeat that?");
+        await voiceIO.speak("Sorry, could you repeat that?");
         dispatch({ type: "START_LISTENING" });
       } finally {
         isProcessingRef.current = false;
@@ -368,7 +366,7 @@ export function useAgnesDemo(options: UseAgnesDemoOptions = {}): UseAgnesDemoRet
   // Effect: Handle NAVIGATING phase
   useEffect(() => {
     if (state.phase !== "NAVIGATING" || !state.navigationTarget) return;
-
+    console.log("[Agnes] NAVIGATING phase - target:", state.navigationTarget);
     void executeNavigation(state.navigationTarget);
   }, [state.phase, state.navigationTarget, executeNavigation]);
 
