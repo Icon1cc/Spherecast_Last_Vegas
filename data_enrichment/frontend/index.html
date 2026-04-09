@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agnes DB Browser</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    header {
+      background: #1a1d27;
+      border-bottom: 1px solid #2d3148;
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-shrink: 0;
+    }
+    header h1 { font-size: 16px; font-weight: 600; color: #a78bfa; }
+    header .stats { font-size: 12px; color: #64748b; margin-left: auto; }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 200px 240px 280px 1fr;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .panel {
+      border-right: 1px solid #2d3148;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .panel-header {
+      padding: 10px 14px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #64748b;
+      border-bottom: 1px solid #2d3148;
+      flex-shrink: 0;
+    }
+
+    .panel-body {
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    .list-item {
+      padding: 9px 14px;
+      cursor: pointer;
+      border-bottom: 1px solid #1e2235;
+      font-size: 13px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      transition: background 0.1s;
+    }
+    .list-item:hover { background: #1e2235; }
+    .list-item.active { background: #2d3148; border-left: 3px solid #a78bfa; }
+    .list-item .sub { font-size: 11px; color: #64748b; }
+
+    /* Ingredients panel */
+    .ingredient-row {
+      padding: 10px 14px;
+      cursor: pointer;
+      border-bottom: 1px solid #1e2235;
+      transition: background 0.1s;
+    }
+    .ingredient-row:hover { background: #1e2235; }
+    .ingredient-row.active { background: #2d3148; border-left: 3px solid #a78bfa; }
+
+    .ingredient-name {
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 4px;
+    }
+
+    .ingredient-suppliers {
+      font-size: 11px;
+      color: #94a3b8;
+      margin-bottom: 5px;
+    }
+
+    .flags { display: flex; flex-wrap: wrap; gap: 4px; }
+
+    .flag {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .flag-vegan    { background: #14532d; color: #86efac; }
+    .flag-nonvegan { background: #450a0a; color: #fca5a5; }
+    .flag-organic  { background: #1c2d1c; color: #86efac; }
+    .flag-nongmo   { background: #1c1c2d; color: #a5b4fc; }
+    .flag-patent   { background: #431407; color: #fdba74; }
+    .flag-single   { background: #3b1a1a; color: #f87171; }
+    .flag-excipient { background: #1e293b; color: #94a3b8; }
+    .flag-market   { background: #0c1a2e; color: #60a5fa; }
+    .flag-warning  { background: #451a03; color: #fb923c; }
+
+    /* Detail drawer */
+    .detail-panel {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: #12151f;
+    }
+
+    .detail-header {
+      padding: 14px 20px;
+      border-bottom: 1px solid #2d3148;
+      flex-shrink: 0;
+    }
+    .detail-header h2 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+    .detail-header .sku { font-size: 11px; color: #64748b; font-family: monospace; }
+
+    .detail-body {
+      padding: 16px 20px;
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    .detail-section { margin-bottom: 20px; }
+    .detail-section h3 {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #64748b;
+      margin-bottom: 8px;
+    }
+
+    .detail-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+      padding: 5px 0;
+      border-bottom: 1px solid #1e2235;
+    }
+    .detail-row .label { color: #94a3b8; }
+    .detail-row .value { font-weight: 500; text-align: right; max-width: 60%; }
+
+    .supplier-chip {
+      display: inline-block;
+      background: #1e2942;
+      color: #7dd3fc;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      margin: 2px;
+    }
+
+    .usage-item {
+      font-size: 12px;
+      padding: 4px 0;
+      color: #94a3b8;
+    }
+    .usage-item .fg { color: #e2e8f0; font-family: monospace; font-size: 11px; }
+
+    .copy-btn {
+      display: block;
+      width: 100%;
+      padding: 10px 16px;
+      background: #4f46e5;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 8px;
+      transition: background 0.15s;
+    }
+    .copy-btn:hover { background: #6366f1; }
+    .copy-btn.copied { background: #16a34a; }
+
+    .prompt-box {
+      background: #0f1117;
+      border: 1px solid #2d3148;
+      border-radius: 6px;
+      padding: 12px;
+      font-size: 11px;
+      font-family: monospace;
+      white-space: pre-wrap;
+      color: #94a3b8;
+      margin-top: 8px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .empty-state {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: #334155;
+      font-size: 13px;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .empty-state .icon { font-size: 32px; }
+
+    .loading { color: #64748b; font-size: 12px; padding: 12px 14px; }
+
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #2d3148; border-radius: 2px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>🔬 Agnes DB Browser</h1>
+  <span class="stats" id="stats">Loading...</span>
+</header>
+
+<div class="layout">
+
+  <!-- Panel 1: Companies -->
+  <div class="panel">
+    <div class="panel-header">Companies</div>
+    <div class="panel-body" id="companies-list">
+      <div class="loading">Loading...</div>
+    </div>
+  </div>
+
+  <!-- Panel 2: BOMs -->
+  <div class="panel">
+    <div class="panel-header">BOMs / Finished Goods</div>
+    <div class="panel-body" id="boms-list">
+      <div class="empty-state"><span class="icon">←</span>Select a company</div>
+    </div>
+  </div>
+
+  <!-- Panel 3: Ingredients -->
+  <div class="panel">
+    <div class="panel-header" id="ingredients-header">Ingredients</div>
+    <div class="panel-body" id="ingredients-list">
+      <div class="empty-state"><span class="icon">←</span>Select a BOM</div>
+    </div>
+  </div>
+
+  <!-- Panel 4: Detail -->
+  <div class="detail-panel">
+    <div id="detail-content">
+      <div class="empty-state" style="height:100vh">
+        <span class="icon">🔍</span>
+        Click an ingredient to see details<br>and copy the enrichment prompt
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const API = 'http://localhost:8000';
+
+// State
+let selectedCompany = null;
+let selectedBom = null;
+let selectedIngredient = null;
+let currentFgSku = null;
+let currentCompanyName = null;
+let _lastPrompt = '';
+
+// ── Infer flags from SKU slug ────────────────────────────────────────────────
+
+const PATENT_SIGNALS = ['magtein', 'aquamin', 'bl-04', 'fructoborate', 'fruitex', 'corn-zein', 'cultured-nutrients'];
+const NON_VEGAN_SIGNALS = ['gelatin', 'collagen', 'whey', 'milk-protein', 'dairy', 'bone-gelatin', 'softgel-bovine', 'bovine'];
+const VEGAN_SIGNALS = ['vegan-capsule', 'vegan-', 'plantgel', 'vegetarian-capsule'];
+const EXCIPIENT_SIGNALS = ['magnesium-stearate', 'silicon-dioxide', 'microcrystalline-cellulose',
+  'croscarmellose', 'stearic-acid', 'hypromellose', 'polyvinyl-alcohol', 'carnauba-wax',
+  'titanium-dioxide', 'talc', 'shellac', 'maltodextrin'];
+const MARKET_MAP = {
+  'walmart':            { label: 'Walmart (Mass)', tier: 1 },
+  'target':             { label: 'Target (Mass)', tier: 1 },
+  'costco':             { label: 'Costco (Bulk)', tier: 1 },
+  'cvs':                { label: 'CVS (Drug)', tier: 2 },
+  'walgreens':          { label: 'Walgreens (Drug)', tier: 2 },
+  'amazon':             { label: 'Amazon', tier: 2 },
+  'vitacost':           { label: 'Vitacost (Online)', tier: 3 },
+  'iherb':              { label: 'iHerb (Specialty)', tier: 3 },
+  'the-vitamin-shoppe': { label: 'The Vitamin Shoppe (Specialty)', tier: 3 },
+  'vitamin-shoppe':     { label: 'The Vitamin Shoppe (Specialty)', tier: 3 },
+  'whole-foods':        { label: 'Whole Foods (Natural)', tier: 3 },
+  'sprouts':            { label: 'Sprouts (Natural)', tier: 3 },
+  'gnc':                { label: 'GNC (Specialty)', tier: 3 },
+  'direct':             { label: 'Direct / DTC', tier: 4 },
+  'dtc':                { label: 'Direct / DTC', tier: 4 },
+};
+
+function inferFlags(rmSku, fgSku, supplierCount) {
+  const s = rmSku.toLowerCase();
+  const flags = [];
+
+  // Organic
+  if (s.includes('organic-')) flags.push({ cls: 'flag-organic', label: 'Organic' });
+  // Non-GMO
+  if (s.includes('non-gmo')) flags.push({ cls: 'flag-nongmo', label: 'Non-GMO' });
+  // Vegan
+  const isVegan = VEGAN_SIGNALS.some(v => s.includes(v));
+  const isNonVegan = NON_VEGAN_SIGNALS.some(v => s.includes(v));
+  if (isVegan) flags.push({ cls: 'flag-vegan', label: 'Vegan' });
+  if (isNonVegan) flags.push({ cls: 'flag-nonvegan', label: '⚠ Non-Vegan' });
+  // Patent
+  if (PATENT_SIGNALS.some(p => s.includes(p))) flags.push({ cls: 'flag-patent', label: '🔒 Patent Signal' });
+  // Excipient
+  if (EXCIPIENT_SIGNALS.some(e => s.includes(e))) flags.push({ cls: 'flag-excipient', label: 'Excipient' });
+  // Single source
+  if (supplierCount === 1) flags.push({ cls: 'flag-single', label: '⚠ Single Source' });
+  // Market
+  if (fgSku) {
+    const parts = fgSku.split('-');
+    if (parts.length >= 2) {
+      const retailer = parts[1].toLowerCase();
+      const mkt = MARKET_MAP[retailer];
+      if (mkt) flags.push({ cls: 'flag-market', label: mkt.label });
+    }
+  }
+  // Sodium benzoate + ascorbic acid warning (handled at BOM level, not here)
+  // Titanium dioxide EU warning
+  if (s.includes('titanium-dioxide')) flags.push({ cls: 'flag-warning', label: '⚠ EU Banned' });
+  if (s.includes('sodium-benzoate')) flags.push({ cls: 'flag-warning', label: '⚠ Benzene Risk' });
+  if (s.includes('red-40') || s.includes('blue-2') || s.includes('yellow-6') || s.includes('yellow-5')) {
+    flags.push({ cls: 'flag-warning', label: '⚠ EU Label Req' });
+  }
+
+  return flags;
+}
+
+function renderFlags(flags) {
+  return flags.map(f => `<span class="flag ${f.cls}">${f.label}</span>`).join('');
+}
+
+function extractCanonicalName(sku) {
+  // RM-C{N}-{name}-{hash} → strip prefix and hash
+  return sku.replace(/^RM-C\d+-/, '').replace(/-[0-9a-f]{8}$/, '').replace(/-/g, ' ');
+}
+
+function inferMarket(fgSku) {
+  if (!fgSku) return 'unknown';
+  // FG SKU format: FG-{retailer-slug}-{id}
+  // Retailer slug may contain hyphens (e.g. "the-vitamin-shoppe"), so try longest match first
+  const withoutPrefix = fgSku.replace(/^FG-/, '').toLowerCase();
+  // Try progressively shorter prefixes until we hit a known retailer or run out of tokens
+  const tokens = withoutPrefix.split('-');
+  for (let len = tokens.length - 1; len >= 1; len--) {
+    const candidate = tokens.slice(0, len).join('-');
+    if (MARKET_MAP[candidate]) return MARKET_MAP[candidate].label;
+  }
+  // Fallback: return the first token with "(Unknown)" suffix
+  return `${tokens[0]} (Unknown)`;
+}
+
+// ── API calls ────────────────────────────────────────────────────────────────
+
+async function fetchJSON(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+  return r.json();
+}
+
+// ── Render companies ─────────────────────────────────────────────────────────
+
+async function loadCompanies() {
+  const [companies, stats] = await Promise.all([
+    fetchJSON(`${API}/api/companies`),
+    fetchJSON(`${API}/api/dashboard/stats`),
+  ]);
+  document.getElementById('stats').textContent =
+    `${stats.total_companies} companies · ${stats.total_boms} BOMs · ${stats.total_raw_materials} RMs · ${stats.total_suppliers} suppliers`;
+
+  const list = document.getElementById('companies-list');
+  list.innerHTML = companies.map(c => `
+    <div class="list-item" data-id="${c.id}" onclick="selectCompany(${c.id}, '${escHtml(c.name)}')">
+      ${escHtml(c.name)}
+    </div>
+  `).join('');
+}
+
+async function selectCompany(id, name) {
+  selectedCompany = id;
+  document.querySelectorAll('#companies-list .list-item').forEach(el => {
+    el.classList.toggle('active', parseInt(el.dataset.id) === id);
+  });
+  document.getElementById('boms-list').innerHTML = '<div class="loading">Loading...</div>';
+  document.getElementById('ingredients-list').innerHTML =
+    '<div class="empty-state"><span class="icon">←</span>Select a BOM</div>';
+  document.getElementById('detail-content').innerHTML =
+    '<div class="empty-state" style="height:100%"><span class="icon">🔍</span>Click an ingredient</div>';
+
+  const boms = await fetchJSON(`${API}/api/boms?company_id=${id}&limit=100`);
+  const list = document.getElementById('boms-list');
+  if (!boms.length) {
+    list.innerHTML = '<div class="empty-state">No BOMs</div>';
+    return;
+  }
+  list.innerHTML = boms.map(b => `
+    <div class="list-item" data-id="${b.id}" onclick="selectBom(${b.id}, '${escHtml(b.product_sku)}', '${escHtml(name)}')">
+      <span>${escHtml(b.product_sku)}</span>
+      <span class="sub">${b.component_count} ingredients</span>
+    </div>
+  `).join('');
+}
+
+async function selectBom(id, fgSku, companyName) {
+  selectedBom = id;
+  currentFgSku = fgSku;
+  currentCompanyName = companyName;
+
+  document.querySelectorAll('#boms-list .list-item').forEach(el => {
+    el.classList.toggle('active', parseInt(el.dataset.id) === id);
+  });
+
+  document.getElementById('ingredients-header').textContent = `Ingredients — ${fgSku}`;
+  document.getElementById('ingredients-list').innerHTML = '<div class="loading">Loading...</div>';
+  document.getElementById('detail-content').innerHTML =
+    '<div class="empty-state" style="height:100%"><span class="icon">🔍</span>Click an ingredient</div>';
+
+  const bom = await fetchJSON(`${API}/api/boms/${id}`);
+  const list = document.getElementById('ingredients-list');
+  list.innerHTML = bom.components.map(c => {
+    const flags = inferFlags(c.sku, fgSku, c.suppliers.length);
+    return `
+      <div class="ingredient-row" data-id="${c.id}" onclick="selectIngredient(${c.id}, '${escHtml(c.sku)}', ${JSON.stringify(c.suppliers).replace(/"/g, '&quot;')})">
+        <div class="ingredient-name">${escHtml(extractCanonicalName(c.sku))}</div>
+        <div class="ingredient-suppliers">${c.suppliers.join(' · ') || 'No supplier'}</div>
+        <div class="flags">${renderFlags(flags)}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function selectIngredient(productId, sku, suppliers) {
+  selectedIngredient = productId;
+  document.querySelectorAll('.ingredient-row').forEach(el => {
+    el.classList.toggle('active', parseInt(el.dataset.id) === productId);
+  });
+
+  const detail = await fetchJSON(`${API}/api/ingredient/${productId}`);
+  renderDetail(detail, sku, suppliers);
+}
+
+// ── Render detail panel ──────────────────────────────────────────────────────
+
+function renderDetail(detail, sku, suppliers) {
+  const canonical = extractCanonicalName(sku);
+  const flags = inferFlags(sku, currentFgSku, detail.supplier_count);
+  const market = inferMarket(currentFgSku);
+
+  // Inferred properties
+  const inferred = {};
+  inferred.market = market;
+  inferred.organic = /organic-/.test(sku.toLowerCase()) ? 'Yes (slug prefix)' : 'No';
+  inferred.non_gmo = /non-gmo/.test(sku.toLowerCase()) ? 'Yes (slug prefix)' : 'No';
+  const nonVegan = NON_VEGAN_SIGNALS.some(v => sku.toLowerCase().includes(v));
+  const vegan = VEGAN_SIGNALS.some(v => sku.toLowerCase().includes(v));
+  inferred.vegan = vegan ? 'Yes (slug prefix)' : nonVegan ? 'No (animal-derived signal)' : 'Unknown';
+  inferred.patent_signal = PATENT_SIGNALS.some(p => sku.toLowerCase().includes(p)) ? 'Yes — verify externally' : 'None detected';
+  inferred.source_count = `${detail.supplier_count} supplier${detail.supplier_count !== 1 ? 's' : ''} in DB`;
+
+  // Build enrichment prompt — store in module-level var so copy button can access it safely
+  _lastPrompt = buildPrompt(detail, sku, canonical, suppliers, inferred);
+  const prompt = _lastPrompt;
+
+  document.getElementById('detail-content').innerHTML = `
+    <div class="detail-header">
+      <h2>${escHtml(canonical)}</h2>
+      <div class="sku">${escHtml(sku)}</div>
+      <div class="flags" style="margin-top:8px">${renderFlags(flags)}</div>
+    </div>
+    <div class="detail-body">
+
+      <div class="detail-section">
+        <h3>Suppliers in DB</h3>
+        <div>${detail.suppliers.map(s => `<span class="supplier-chip">${escHtml(s.name)}</span>`).join('')}</div>
+      </div>
+
+      <div class="detail-section">
+        <h3>Inferred from Context (no search)</h3>
+        ${Object.entries(inferred).map(([k, v]) => `
+          <div class="detail-row">
+            <span class="label">${k.replace(/_/g,' ')}</span>
+            <span class="value">${escHtml(String(v))}</span>
+          </div>
+        `).join('')}
+      </div>
+
+      <div class="detail-section">
+        <h3>Used in ${detail.used_in_count} Finished Good${detail.used_in_count !== 1 ? 's' : ''}</h3>
+        ${detail.used_in.slice(0, 8).map(u => `
+          <div class="usage-item">
+            <span class="fg">${escHtml(u.fg_sku)}</span>
+            <span style="color:#475569"> · ${escHtml(u.company)}</span>
+          </div>
+        `).join('')}
+        ${detail.used_in_count > 8 ? `<div class="usage-item" style="color:#475569">+${detail.used_in_count - 8} more</div>` : ''}
+      </div>
+
+      <div class="detail-section">
+        <h3>Enrichment Prompt</h3>
+        <div class="prompt-box">${escHtml(prompt)}</div>
+        <button class="copy-btn" id="copy-prompt-btn" onclick="copyLastPrompt(this)">
+          📋 Copy enrichment prompt
+        </button>
+      </div>
+
+    </div>
+  `;
+}
+
+function buildPrompt(detail, sku, canonical, suppliers, inferred) {
+  const supplierLines = detail.suppliers.map(s => `  - "${s.name}" (supplier_id: ${s.id})`).join('\n') || '  - unknown';
+  const allFgLines = detail.used_in.map(u => `  - ${u.fg_sku} (${u.company}, company_id: ${u.company_id})`).join('\n');
+  const primarySupplier = detail.suppliers[0] ? detail.suppliers[0].name : 'unknown';
+  const primarySupplierId = detail.suppliers[0] ? detail.suppliers[0].id : 'unknown';
+  const exampleFg = detail.used_in[0] || { fg_sku: 'unknown', company: 'unknown', company_id: 'unknown' };
+  const date = new Date().toISOString().slice(0,10).replace(/-/g,'');
+  const allSupplierNames = detail.suppliers.map(s => s.name).join(', ') || 'unknown';
+
+  // Build per-supplier skeleton entries for the output JSON (flat schema)
+  const supplierSkeletons = detail.suppliers.map(s => `    {
+      "id": "${detail.id}__${s.id}__${date}",
+      "rm_id": ${detail.id},
+      "rm_sku": "${sku}",
+      "sup_id": ${s.id},
+      "sup_name": "${s.name}",
+      "sup_url": null,
+      "sup_product_url": null,
+      "sup_spec_url": null,
+      "country": null,
+      "region": null,
+      "price": null,
+      "fg_skus": [],
+      "cas_number": null,
+      "canonical_name": null,
+      "functional_role": null,
+      "patent_lock": null,
+      "single_manufacturer": null,
+      "market_ban_eu": null,
+      "market_ban_us": null,
+      "vegan_status": null,
+      "vegetarian_status": null,
+      "halal_status": null,
+      "kosher_status": null,
+      "non_gmo_status": null,
+      "organic_status": null,
+      "allergen_flags": null,
+      "label_form_claim": null,
+      "health_claim_form": null,
+      "verify": [],
+      "discovered": [],
+      "refs": [],
+      "enriched_at": "<ISO datetime now>",
+      "pipeline_version": "1.0"
+    }`).join(',\n');
+
+  return `# Agnes Ingredient Enrichment Task
+
+## Project Context
+You are working on the Agnes sourcing agent — a supply chain tool for dietary supplement companies.
+The project lives at the current working directory. Key files:
+  - data_enrichment/backend/schemas.py          → Pydantic schema for the output JSON (IngredientSupplierEnrichment)
+  - data_enrichment/backend/mock_enrichment.json → Complete filled example (read this before starting)
+  - data_enrichment/docs/scraping_and_ingestion.md → Full workflow reference
+  - data/db.sqlite              → SQLite DB with 61 companies, 149 BOMs, 876 raw materials, 40 suppliers
+
+READ data_enrichment/backend/mock_enrichment.json and data_enrichment/backend/schemas.py before doing anything else.
+They define the exact output format expected. Follow them precisely.
+
+---
+
+## Your Task
+Enrich the following raw material for ALL its DB suppliers listed below.
+Produce one JSON object per supplier. Save output to enrichments/ directory.
+
+---
+
+## Input Data (from SQLite DB — treat as facts)
+
+Raw Material
+  ingredient_id : ${detail.id}
+  SKU           : ${sku}
+  Canonical name: ${canonical}
+
+DB Suppliers (${detail.supplier_count}) — produce one output object per supplier:
+${supplierLines}
+
+Used in ${detail.used_in_count} finished good(s) — use these to find FG product pages:
+${allFgLines}
+
+Unverified slug-inferred hints (NOT facts — confirm or deny via web):
+  market context : ${inferred.market}
+  organic        : ${inferred.organic}
+  non-gmo        : ${inferred.non_gmo}
+  vegan-safe     : ${inferred.vegan}
+  patent signal  : ${inferred.patent_signal}
+
+---
+
+## Tools to Use
+
+**Playwright MCP** (already available in this session) — use for:
+  - mcp__playwright__browser_navigate  → open supplier product page
+  - mcp__playwright__browser_snapshot  → read page content
+  - mcp__playwright__browser_take_screenshot → visual confirmation of cert badges, prices
+  Use Playwright whenever a web search returns a relevant URL that needs deeper inspection.
+
+**WebSearch** — use for:
+  - Finding supplier product pages
+  - PubChem lookups (CAS numbers)
+  - Patent/trademark searches
+  - EU/US regulatory status
+  - FG brand product pages (iHerb, Amazon, brand site)
+
+---
+
+## Research Steps
+
+### Phase 1 — Once per ingredient (PARALLELISE — fire all searches simultaneously)
+
+Steps 2–6 are fully independent. Issue them all as parallel WebSearch calls in a
+single message before processing any result. Do NOT do them sequentially.
+
+1. READ data_enrichment/backend/mock_enrichment.json to understand the exact output format.
+
+2. **CAS number** — search "${canonical} CAS number site:pubchem.ncbi.nlm.nih.gov"
+   → Extract CAS, confirm canonical IUPAC name. Reuse for ALL supplier records.
+
+3. **Finished good product page** (for label_form_claim + health_claim_form)
+   Search: "${exampleFg.company} supplement facts" or the FG SKU on iHerb/Amazon
+   → Playwright: find Supplement Facts panel. Extract label form + any branded claim.
+   → Reuse for ALL supplier records.
+
+4. **Patent / IP lock** — search "${canonical} patent trademark ingredient"
+   → patent_lock verdict. Reuse for all suppliers.
+
+5. **Regulatory status** — fire BOTH in parallel:
+   EU: "${canonical} EFSA EU food supplement permitted"
+   US: "${canonical} GRAS FDA supplement"
+   → market_ban_eu + market_ban_us. Reuse for all suppliers.
+
+6. **Single manufacturer check** — search "${canonical} manufacturer supplier global"
+   → single_manufacturer verdict + discovered[] list. Reuse for all suppliers.
+
+### Phase 2 — Once per supplier (PARALLELISE across suppliers where possible)
+
+If there are multiple suppliers, launch their product-page searches in parallel
+(one WebSearch per supplier simultaneously), then Playwright each result.
+
+7. **Supplier product page** — search "${canonical} {supplier_name} bulk ingredient"
+   → Playwright: navigate, snapshot.
+   → Extract: sup_product_url, sup_spec_url, price/MOQ, country/region, cert badges
+      (vegan, halal, kosher, non_gmo, organic — these CAN differ per supplier).
+
+9. **Pricing**
+   Already covered in step 2. If no price listed, note "not_listed".
+   → Populate both the rm_price criterion AND the top-level price{} field.
+
+10. **Discovered suppliers**
+    While researching steps 5-6, note any global manufacturers/suppliers NOT in the DB list.
+    Add them to discovered_suppliers[] — these are backlinks for future DB extension.
+
+11. **Supplier geo-location**
+    Confirm country + region (north_america | europe | asia | other) for each DB supplier.
+    This is important for substitution decisions (EU product → prefer EU supplier).
+
+---
+
+## Criterion Field Reference (direct top-level fields — flat schema)
+
+Required (always populate — use "unknown" if not found):
+  cas_number          → CAS string or "unknown"
+  canonical_name      → confirmed name or "unknown"
+  functional_role     → "active" | "excipient" | "processing_aid" | "unknown"
+  patent_lock         → "yes" | "no" | "uncertain"
+  single_manufacturer → "yes" | "no" | "unknown"
+  market_ban_eu       → "permitted" | "banned" | "restricted" | "unknown"
+  market_ban_us       → "permitted" | "banned" | "restricted" | "unknown"
+  vegan_status        → "yes" | "no" | "uncertain" | "unknown"
+  vegetarian_status   → "yes" | "no" | "uncertain" | "unknown"
+  halal_status        → "certified" | "compliant" | "non_compliant" | "unknown"
+  kosher_status       → "certified" | "compliant" | "non_compliant" | "unknown"
+  non_gmo_status      → "certified" | "standard" | "gmo" | "unknown"
+  organic_status      → "certified" | "conventional" | "unknown"
+  allergen_flags      → list e.g. ["soy"] or [] or null
+  label_form_claim    → exact form from FG label or "not_specified" or "unknown"
+  health_claim_form   → brand claim tying to specific form or "none" or "unknown"
+
+Optional (include only when applicable — omit otherwise):
+  salt_ester_form         → form name
+  stereoisomer_form       → "d"|"dl"|"l"|"racemic"
+  dose_conversion_factor  → decimal string (elemental %)
+  bioequivalence          → "equivalent"|"not_equivalent"|"requires_study"
+  strain_designation      → strain code (probiotics only)
+
+verify[] — list criterion keys needing human review
+refs[]   — one shared list for ALL source URLs:
+  {"url": "...", "type": "web_search|playwright|db|kb", "note": "what this URL supports"}
+
+---
+
+## Idempotency Check
+
+Before enriching any supplier, read enrichments/enrichments.jsonl (if it exists).
+Each line is a JSON record. A supplier is already done if any line has:
+  rm_id == ${detail.id}  AND  sup_id == <that supplier's id>
+Skip any supplier already present — only enrich the missing ones.
+
+---
+
+## Output — append to JSONL
+
+DO NOT use inline python -c with the data — shell escaping breaks on quotes.
+Use two steps instead:
+
+Step 1 — write enrichment records using the Write tool:
+  Path: enrichments/tmp.json
+  Content: JSON array [ {...record1...}, {...record2...} ]
+
+Step 2 — run the append script:
+  python data_enrichment/backend/append_enrichment.py enrichments/tmp.json
+
+The script handles stripping empty criteria, idempotency, and appending to enrichments.jsonl.
+
+Skeleton per record:
+\`\`\`json
+[
+${supplierSkeletons}
+]
+\`\`\`
+
+Full example: data_enrichment/backend/mock_enrichment.json
+Schema: data_enrichment/backend/schemas.py → class EnrichmentRecord
+
+---
+
+## After Appending
+
+Run: python data_enrichment/backend/enrichment_status.py --summary
+This shows progress (done/total/pending) from the JSONL.
+See data_enrichment/docs/scraping_and_ingestion.md for the complete workflow.`;
+}
+
+async function copyLastPrompt(btn) {
+  if (!_lastPrompt) return;
+  try {
+    await navigator.clipboard.writeText(_lastPrompt);
+    btn.textContent = '✓ Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.textContent = '📋 Copy enrichment prompt';
+      btn.classList.remove('copied');
+    }, 2000);
+  } catch (err) {
+    // Fallback for browsers that block clipboard without user gesture
+    const ta = document.createElement('textarea');
+    ta.value = _lastPrompt;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    btn.textContent = '✓ Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.textContent = '📋 Copy enrichment prompt';
+      btn.classList.remove('copied');
+    }, 2000);
+  }
+}
+
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+loadCompanies();
+</script>
+</body>
+</html>

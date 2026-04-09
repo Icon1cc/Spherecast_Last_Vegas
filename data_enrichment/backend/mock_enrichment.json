@@ -1,0 +1,62 @@
+{
+  "id": "vitamin-d3-cholecalciferol__7__20260408",
+  "ingredient_slug": "vitamin-d3-cholecalciferol",
+  "rm_ids": [142, 301, 412],
+  "sup_id": 7,
+  "sup_name": "Prinova USA",
+  "sup_url": "https://www.prinovausa.com",
+  "sup_product_url": "https://www.prinovausa.com/ingredients/vitamin-d3",
+  "sup_spec_url": "https://www.prinovausa.com/downloads/vitamin-d3-tds.pdf",
+  "country": "US",
+  "region": "north_america",
+
+  "price": "$85/kg MOQ:25kg",
+  "price_per_unit": 85.0,
+  "price_unit": "kg",
+  "price_moq": "25 kg",
+  "price_date": "2026-04-08",
+
+  "fg_skus": ["FG-iherb-10421", "FG-walmart-88234", "FG-target-a-55123"],
+
+  "cas_number": "67-97-0",
+  "canonical_name": "Cholecalciferol",
+  "functional_role": "active",
+  "patent_lock": "no",
+  "single_manufacturer": "no",
+  "market_ban_eu": "permitted",
+  "market_ban_us": "permitted",
+  "vegan_status": "no",
+  "vegetarian_status": "yes",
+  "halal_status": "unknown",
+  "kosher_status": "unknown",
+  "non_gmo_status": "standard",
+  "organic_status": "conventional",
+  "allergen_flags": [],
+  "label_form_claim": "Vitamin D3 (as Cholecalciferol)",
+  "health_claim_form": "none",
+  "salt_ester_form": "cholecalciferol",
+
+  "verify": ["halal_status", "kosher_status"],
+
+  "discovered": [
+    {
+      "name": "dsm-firmenich",
+      "url": "https://www.dsm-firmenich.com",
+      "product_url": "https://www.dsm-firmenich.com/en/products/vitamins/vitamin-d.html",
+      "country": "NL",
+      "region": "europe",
+      "certifications": ["non-gmo", "halal", "kosher"],
+      "notes": "Quali-D branded D3. Major global manufacturer. Not in DB."
+    }
+  ],
+
+  "refs": [
+    {"url": "https://pubchem.ncbi.nlm.nih.gov/compound/5280795", "type": "web_search", "note": "cas_number, canonical_name"},
+    {"url": "https://www.prinovausa.com/ingredients/vitamin-d3", "type": "playwright", "note": "sup_product_url, price, non_gmo_status"},
+    {"url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32002L0046", "type": "web_search", "note": "market_ban_eu (Directive 2002/46/EC Annex I)"},
+    {"url": "https://www.ecfr.gov/current/title-21/chapter-I/part-182", "type": "web_search", "note": "market_ban_us (21 CFR 182.5950 GRAS)"}
+  ],
+
+  "enriched_at": "2026-04-08T10:23:00",
+  "pipeline_version": "1.0"
+}
