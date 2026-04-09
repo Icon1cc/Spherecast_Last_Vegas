@@ -396,7 +396,7 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
               text: chunk,
               voiceId: ELEVENLABS_VOICE_ID,
               modelId: ELEVENLABS_TTS_MODEL_ID,
-              optimizeLatency: 3,
+              optimizeLatency: 1,
             }),
           });
 
@@ -430,9 +430,13 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
               reject(new Error("Audio playback failed"));
             };
             audio.onpause = () => {
-              // Treat manual stop/pause as a graceful cancellation.
-              cleanup();
-              resolve();
+              // Only treat as interruption if audio didn't end naturally.
+              // Some browsers fire pause just before/instead of ended —
+              // revoking the URL in that case cuts off the last syllable.
+              if (!audio.ended) {
+                cleanup();
+                resolve();
+              }
             };
 
             void audio.play().catch((error) => {
@@ -487,7 +491,7 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
           await speakText(cleanText);
           // Auto-listen after Agnes finishes speaking if voice conversation mode is on
           if (voiceConversationModeRef.current) {
-            await new Promise<void>((r) => setTimeout(r, 300));
+            await new Promise<void>((r) => setTimeout(r, 600));
             if (voiceConversationModeRef.current) {
               void startListeningRef.current();
             }
