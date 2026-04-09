@@ -165,7 +165,7 @@ ingredient_profile (174) ── keyed by CAS number
 │       └── lib/
 │           └── api.ts               # Typed API client
 ├── data_enrichment/                # Agnes enrichment pipeline (Python)
-│   ├── enrichment_loop.md           # Claude Code kickoff prompt (paste into session)
+│   ├── enrichment_loop.md           # Agentic enrichment loop prompt (interactive or headless)
 │   ├── backend/
 │   │   ├── next_enrichment.py       # Generate per-pair enrichment prompts
 │   │   ├── append_enrichment.py     # Append results to JSONL (dedup check)

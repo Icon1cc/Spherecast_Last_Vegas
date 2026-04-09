@@ -822,6 +822,7 @@ const AnalysisPage = () => {
                         <th className="text-left px-4 py-2 font-medium">Supplier</th>
                         <th className="text-left px-4 py-2 font-medium hidden md:table-cell">Country</th>
                         <th className="text-left px-4 py-2 font-medium">Vegan</th>
+                        <th className="text-left px-4 py-2 font-medium hidden md:table-cell">Form Fit</th>
                         <th className="text-left px-4 py-2 font-medium hidden lg:table-cell">Reasoning</th>
                         <th className="text-left px-4 py-2 font-medium">Action</th>
                       </tr>
@@ -836,6 +837,25 @@ const AnalysisPage = () => {
                             <td className="px-4 py-2">{r.supplier_name}</td>
                             <td className="px-4 py-2 text-muted-foreground hidden md:table-cell">{r.country ?? "—"}</td>
                             <td className="px-4 py-2"><ComplianceBadge value={r.vegan_status} /></td>
+                            <td className="px-4 py-2 hidden md:table-cell">
+                              {r.labelFormVerdict ? (
+                                <span
+                                  title={r.labelFormVerdict.rationale}
+                                  className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium cursor-help ${
+                                    r.labelFormVerdict.verdict === "drop_in"
+                                      ? "bg-green-100 text-green-700"
+                                      : r.labelFormVerdict.verdict === "with_review"
+                                      ? "bg-yellow-100 text-yellow-700"
+                                      : "bg-red-100 text-red-700"
+                                  }`}
+                                >
+                                  {r.labelFormVerdict.verdict === "drop_in" ? "Drop-in" :
+                                   r.labelFormVerdict.verdict === "with_review" ? "Needs review" : "Not viable"}
+                                </span>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">—</span>
+                              )}
+                            </td>
                             <td className="px-4 py-2 text-xs text-muted-foreground hidden lg:table-cell">
                               {buildTier2Reasoning(r, substitution.component, weights)}
                             </td>

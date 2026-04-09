@@ -180,6 +180,13 @@ export interface SubstitutionTier1 {
   score?: number;
 }
 
+export type LabelFormVerdict = "drop_in" | "with_review" | "not_viable";
+
+export interface LabelFormAssessment {
+  verdict: LabelFormVerdict;
+  rationale: string;
+}
+
 export interface SubstitutionTier2 {
   cas_number: string;
   canonical_name: string;
@@ -195,6 +202,7 @@ export interface SubstitutionTier2 {
   price_per_unit: number | null;
   certifications: Record<string, string> | null;
   score?: number;
+  labelFormVerdict: LabelFormAssessment | null;
 }
 
 export interface SubstitutionReasoning {

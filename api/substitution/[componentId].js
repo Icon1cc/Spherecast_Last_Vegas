@@ -118,6 +118,8 @@ export async function substitutionHandler(req, res) {
           ip.market_ban_us,
           ip.patent_lock,
           ip.single_manufacturer,
+          ip.label_form_claim,
+          ip.health_claim_form,
           s.id AS supplier_id,
           s.name AS supplier_name,
           sp.country,
@@ -138,8 +140,14 @@ export async function substitutionHandler(req, res) {
         base.cas_number,
       ]);
 
-      // Score and sort Tier 2 based on weights
-      tier2 = scoreTier2Candidates(t2Result.rows, base, weights);
+      // Assess label form compatibility via Gemini for candidates that have label_form_claim data.
+      // A single batch call returns verdicts for all candidates: avoids per-row LLM calls.
+      const labelFormVerdicts = await assessLabelFormCompatibility(
+        base, t2Result.rows, process.env.GEMINI_API_KEY?.trim()
+      );
+
+      // Score and sort Tier 2 based on weights + label form verdicts
+      tier2 = scoreTier2Candidates(t2Result.rows, base, weights, labelFormVerdicts);
     }
 
     // --- Tier 3: Gemini AI reasoning trace ---
@@ -360,10 +368,92 @@ function scoreTier1Candidates(candidates, base, weights) {
 }
 
 /**
- * Score Tier 2 candidates based on user weights
- * Tier 2 = different molecule, same function
+ * Ask Gemini to assess label form compatibility for all Tier 2 candidates in one batch call.
+ * Returns a Map<cas_number, { verdict: "drop_in"|"with_review"|"not_viable", rationale: string }>
+ *
+ * "drop_in"     — bioequivalent, no label change required
+ * "with_review" — functionally similar but requires reformulation/label review
+ * "not_viable"  — materially different compound; cannot substitute without quality loss
+ *
+ * Uses Gemini structured output (responseSchema) to guarantee the response shape.
+ * Falls back to empty Map if Gemini is unavailable or parsing fails.
  */
-function scoreTier2Candidates(candidates, base, weights) {
+async function assessLabelFormCompatibility(base, candidates, geminiKey) {
+  const verdicts = new Map();
+  if (!geminiKey) return verdicts;
+
+  const candidatesWithLabel = candidates.filter(c => c.label_form_claim);
+  if (!candidatesWithLabel.length || !base.label_form_claim) return verdicts;
+
+  const candidateList = candidatesWithLabel
+    .map(c => `- CAS ${c.cas_number}: "${c.canonical_name}" — label form: "${c.label_form_claim}"`)
+    .join("\n");
+
+  const prompt = `You are a pharmaceutical formulation expert advising a CPG sourcing team.
+
+BASE INGREDIENT:
+- Name: ${base.canonical_name ?? base.name}
+- CAS: ${base.cas_number}
+- Functional role: ${base.functional_role}
+- Label form: "${base.label_form_claim}"
+
+TIER 2 CANDIDATES (same functional role, different molecule):
+${candidateList}
+
+For each candidate, assess whether it can substitute the base ingredient WITHOUT quality or efficacy loss.
+Verdicts:
+- "drop_in": bioequivalent form, no meaningful quality difference, label update is cosmetic only
+- "with_review": functionally similar but has meaningful differences (bioavailability, potency, form) — requires reformulation review and label update
+- "not_viable": materially different compound with significant quality or efficacy loss; not a valid substitute
+
+Return one assessment object per candidate CAS number listed above.`;
+
+  const responseSchema = {
+    type: "array",
+    items: {
+      type: "object",
+      properties: {
+        cas_number: { type: "string" },
+        verdict: { type: "string", enum: ["drop_in", "with_review", "not_viable"] },
+        rationale: { type: "string" },
+      },
+      required: ["cas_number", "verdict", "rationale"],
+    },
+  };
+
+  try {
+    const { GoogleGenerativeAI } = await import("@google/generative-ai");
+    const genAI = new GoogleGenerativeAI(geminiKey);
+    const model = genAI.getGenerativeModel({
+      model: GEMINI_DEFAULT_MODEL,
+      generationConfig: {
+        temperature: 0.2,
+        maxOutputTokens: 512,
+        responseMimeType: "application/json",
+        responseSchema,
+      },
+    });
+    const result = await model.generateContent(prompt);
+    const parsed = JSON.parse(result.response.text());
+    for (const item of parsed) {
+      if (item.cas_number && ["drop_in", "with_review", "not_viable"].includes(item.verdict)) {
+        verdicts.set(item.cas_number, { verdict: item.verdict, rationale: item.rationale });
+      }
+    }
+  } catch (err) {
+    console.error("Label form compatibility assessment failed:", err.message);
+  }
+
+  return verdicts;
+}
+
+const LABEL_FORM_SCORE = { drop_in: 1.0, with_review: 0.65, not_viable: 0.2 };
+
+/**
+ * Score Tier 2 candidates based on user weights + LLM label form verdicts.
+ * Tier 2 = different molecule, same function.
+ */
+function scoreTier2Candidates(candidates, base, weights, labelFormVerdicts = new Map()) {
   const totalWeight = weights.price + weights.regulatory + weights.certFit + weights.supplyRisk + weights.functionalFit;
 
   // Find min/max prices for normalization
@@ -420,12 +510,16 @@ function scoreTier2Candidates(candidates, base, weights) {
     if (candidate.country && candidate.country !== base.current_country) supplyRiskScore += 0.1;
     score += Math.min(1, supplyRiskScore) * (weights.supplyRisk / totalWeight);
 
-    // Functional fit - same role but different molecule = 80% base
-    score += 0.8 * (weights.functionalFit / totalWeight);
+    // Functional fit: base 80% for same-role different-molecule, then modulated by LLM label form verdict.
+    // drop_in → full 1.0 (bioequivalent), with_review → 0.65 (needs reformulation), not_viable → 0.2
+    const labelVerdict = labelFormVerdicts.get(candidate.cas_number);
+    const labelFormFitScore = labelVerdict ? LABEL_FORM_SCORE[labelVerdict.verdict] : 0.8;
+    score += labelFormFitScore * (weights.functionalFit / totalWeight);
 
     return {
       ...candidate,
       score: Math.min(0.95, Math.max(0.1, score)), // Cap at 95% for tier 2
+      labelFormVerdict: labelVerdict ?? null,       // expose verdict + rationale to frontend
     };
   });
 
