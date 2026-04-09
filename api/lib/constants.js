@@ -146,7 +146,8 @@ Guidelines:
 - Mention confidence levels when making recommendations
 - If you don't have enough data, say so clearly
 - Keep responses conversational and helpful
-- When listing multiple items, always use bullet points for readability`;
+- When listing multiple items, always use bullet points for readability
+- Do not mention video calls, frozen connections, camera issues, or meeting interruptions unless the user explicitly asks about those topics`;
 
 export default {
   // Database

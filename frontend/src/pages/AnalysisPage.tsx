@@ -38,7 +38,15 @@ import { toast } from "sonner";
 import Layout from "@/components/Layout";
 import ChatIcon from "@/components/ChatIcon";
 import ChatPanel from "@/components/ChatPanel";
-import { getComponentAnalysis, getSubstitutionCandidates, type AnalysisWeights, type AnalysisResponse, type SubstitutionResponse, type SubstitutionTier1 } from "@/lib/api";
+import {
+  getComponentAnalysis,
+  getSubstitutionCandidates,
+  type AnalysisWeights,
+  type AnalysisResponse,
+  type SubstitutionResponse,
+  type SubstitutionTier1,
+  type SubstitutionTier2,
+} from "@/lib/api";
 
 const SLIDER_CONFIG = [
   { key: "price",        label: "Price / Cost",            icon: DollarSign,   tooltip: "Favour lower-cost suppliers and ingredients" },
@@ -56,6 +64,8 @@ const DEFAULT_WEIGHTS: AnalysisWeights = {
   functionalFit: 5,
 };
 
+const MISSING_INFO_TEXT = "Information missing";
+
 function ComplianceBadge({ value }: { value: string | null | undefined }) {
   if (!value || value === "unknown") return <span className="text-muted-foreground text-xs">—</span>;
   if (value === "yes" || value === "permitted" || value === "certified" || value === "compliant")
@@ -63,6 +73,49 @@ function ComplianceBadge({ value }: { value: string | null | undefined }) {
   if (value === "no" || value === "banned" || value === "non_compliant")
     return <span className="inline-flex items-center gap-1 text-xs text-red-500"><XCircle className="w-3 h-3" />{value}</span>;
   return <span className="inline-flex items-center gap-1 text-xs text-yellow-600"><HelpCircle className="w-3 h-3" />{value}</span>;
+}
+
+function formatPriceLabel(
+  price: number | null | undefined,
+  currency: string | null | undefined,
+  unit: string | null | undefined
+): string {
+  if (price == null) return "Price information missing";
+  return `${currency ?? "$"}${price}${unit ? `/${unit}` : "/unit"}`;
+}
+
+function summarizeCertifications(certs: Record<string, string> | null | undefined): string {
+  if (!certs || Object.keys(certs).length === 0) return "Certification details missing";
+  return Object.entries(certs)
+    .map(([key, value]) => `${key}: ${value}`)
+    .join(", ");
+}
+
+function buildTier1Reasoning(
+  row: SubstitutionTier1,
+  component: SubstitutionResponse["component"]
+): string {
+  const casText = component.cas_number
+    ? `Same CAS (${component.cas_number}) as current ingredient.`
+    : "Same molecule candidate.";
+  const priceText = formatPriceLabel(row.price_per_unit, row.price_currency, row.price_unit);
+  const certText = summarizeCertifications(row.certifications);
+  const geo = row.country ?? row.region ?? "Location information missing";
+
+  return `${casText} ${priceText}. ${certText}. Supplier region: ${geo}.`;
+}
+
+function buildTier2Reasoning(
+  row: SubstitutionTier2,
+  component: SubstitutionResponse["component"]
+): string {
+  const roleText = component.functional_role
+    ? `Matches functional role: ${component.functional_role}.`
+    : "Functional role match inferred from substitution tier.";
+  const complianceText = `Compliance snapshot: vegan=${row.vegan_status ?? "unknown"}, EU=${row.market_ban_eu ?? "unknown"}, US=${row.market_ban_us ?? "unknown"}.`;
+  const priceText = row.price_per_unit != null ? `Price: $${row.price_per_unit}/unit.` : "Price information missing.";
+
+  return `${roleText} ${complianceText} ${priceText}`;
 }
 
 function ExternalLinkButton({ href, label, icon: Icon }: { href: string | null | undefined; label: string; icon: React.ElementType }) {
@@ -492,7 +545,7 @@ const AnalysisPage = () => {
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">
                   Tier 1 — Same Molecule, Alternative Suppliers
                 </h3>
-                {/* Static rationale — TODO: replace with per-row Gemini reasoning comparing price, certs, supply risk across suppliers */}
+                {/* Tier overview */}
                 <p className="text-xs text-muted-foreground mb-2">
                   Identical active compound
                   {substitution.component.cas_number ? ` (CAS ${substitution.component.cas_number})` : ""}
@@ -506,6 +559,7 @@ const AnalysisPage = () => {
                         <th className="text-left px-4 py-2 font-medium">Supplier</th>
                         <th className="text-left px-4 py-2 font-medium hidden md:table-cell">Country</th>
                         <th className="text-left px-4 py-2 font-medium">Price/unit</th>
+                        <th className="text-left px-4 py-2 font-medium hidden lg:table-cell">Reasoning</th>
                         <th className="text-left px-4 py-2 font-medium hidden sm:table-cell">Links</th>
                         <th className="text-left px-4 py-2 font-medium">Action</th>
                       </tr>
@@ -531,6 +585,9 @@ const AnalysisPage = () => {
                                 ? <span className="font-medium">{r.price_currency ?? "$"}{r.price_per_unit}{r.price_unit ? `/${r.price_unit}` : "/unit"}</span>
                                 : <span className="text-muted-foreground">—</span>}
                               {r.price_moq && <div className="text-xs text-muted-foreground">MOQ: {r.price_moq}</div>}
+                            </td>
+                            <td className="px-4 py-2 text-xs text-muted-foreground hidden lg:table-cell">
+                              {buildTier1Reasoning(r, substitution.component)}
                             </td>
                             <td className="px-4 py-2 hidden sm:table-cell">
                               <div className="flex flex-wrap gap-1">
@@ -598,7 +655,7 @@ const AnalysisPage = () => {
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">
                   Tier 2 — Same Function, Compliance-Compatible
                 </h3>
-                {/* Static rationale — TODO: replace with Gemini-generated per-row reasoning evaluating bioequivalence, label impact, cost delta */}
+                {/* Tier overview */}
                 <p className="text-xs text-muted-foreground mb-2">
                   Different molecule, same functional role
                   {substitution.component.functional_role ? ` (${substitution.component.functional_role})` : ""}.
@@ -613,6 +670,7 @@ const AnalysisPage = () => {
                         <th className="text-left px-4 py-2 font-medium">Supplier</th>
                         <th className="text-left px-4 py-2 font-medium hidden md:table-cell">Country</th>
                         <th className="text-left px-4 py-2 font-medium">Vegan</th>
+                        <th className="text-left px-4 py-2 font-medium hidden lg:table-cell">Reasoning</th>
                         <th className="text-left px-4 py-2 font-medium">Action</th>
                       </tr>
                     </thead>
@@ -626,6 +684,9 @@ const AnalysisPage = () => {
                             <td className="px-4 py-2">{r.supplier_name}</td>
                             <td className="px-4 py-2 text-muted-foreground hidden md:table-cell">{r.country ?? "—"}</td>
                             <td className="px-4 py-2"><ComplianceBadge value={r.vegan_status} /></td>
+                            <td className="px-4 py-2 text-xs text-muted-foreground hidden lg:table-cell">
+                              {buildTier2Reasoning(r, substitution.component)}
+                            </td>
                             <td className="px-4 py-2">
                               <button
                                 onClick={() => handleChooseSubstitute(r.canonical_name, 2)}
@@ -681,8 +742,7 @@ const AnalysisPage = () => {
                     { label: "Supply Risk",            key: "supply_risk" as const },
                     { label: "Cost Impact",            key: "cost_impact" as const },
                   ].map(({ label, key }) => {
-                    const text = substitution.aiRecommendation!.reasoning[key];
-                    if (!text) return null;
+                    const text = substitution.aiRecommendation!.reasoning[key] ?? MISSING_INFO_TEXT;
                     return (
                       <div key={key} className="flex gap-3 text-sm">
                         <span className="font-semibold text-muted-foreground w-44 shrink-0">{label}</span>
