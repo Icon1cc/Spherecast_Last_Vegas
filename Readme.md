@@ -11,7 +11,7 @@ Give Spherecast's AI Supply Chain Manager **"Agnes"** raw material superpowers:
 
 ## Deployment
 
-This app is deployed on **Vercel**. Push to main branch to deploy.
+This app is deployed on **Vercel**. Push to main branch to deploy automatically.
 
 ## Tech Stack
 
