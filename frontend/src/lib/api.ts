@@ -122,6 +122,11 @@ export async function sendChatMessage(
   return response.json();
 }
 
+export interface SubstitutionRef {
+  url: string;
+  note?: string;
+}
+
 export interface SubstitutionTier1 {
   supplier_id: number;
   supplier_name: string;
@@ -129,9 +134,13 @@ export interface SubstitutionTier1 {
   region: string | null;
   price_per_unit: number | null;
   price_unit: string | null;
+  price_moq: string | null;
+  price_currency: string | null;
   certifications: Record<string, string> | null;
   sup_url: string | null;
   product_page_url: string | null;
+  spec_sheet_url: string | null;
+  refs: SubstitutionRef[] | null;
 }
 
 export interface SubstitutionTier2 {
@@ -169,10 +178,15 @@ export interface SubstitutionResponse {
     vegetarian_status: string | null;
     halal_status: string | null;
     kosher_status: string | null;
+    non_gmo_status: string | null;
+    organic_status: string | null;
     market_ban_eu: string | null;
     market_ban_us: string | null;
     patent_lock: string | null;
     single_manufacturer: string | null;
+    allergen_flags: string[] | null;
+    label_form_claim: string | null;
+    health_claim_form: string | null;
   };
   tier1: SubstitutionTier1[];
   tier2: SubstitutionTier2[];

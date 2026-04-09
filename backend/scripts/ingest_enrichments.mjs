@@ -168,6 +168,8 @@ async function ingest() {
         if (rec.non_gmo_status)    certifications.non_gmo = rec.non_gmo_status;
         if (rec.organic_status)    certifications.organic = rec.organic_status;
 
+        const refsValue = Array.isArray(rec.refs) && rec.refs.length > 0 ? JSON.stringify(rec.refs) : null;
+
         const spResult = await client.query(
           `UPDATE supplier_product
            SET country          = COALESCE($1, country),
@@ -177,6 +179,7 @@ async function ingest() {
                spec_sheet_url   = COALESCE($5, spec_sheet_url),
                price_per_unit   = COALESCE($6, price_per_unit),
                certifications   = COALESCE($7::jsonb, certifications),
+               refs             = COALESCE($10::jsonb, refs),
                enriched_at      = NOW()
            WHERE supplier_id = $8
              AND product_id = ANY($9::int[])`,
@@ -190,6 +193,7 @@ async function ingest() {
             Object.keys(certifications).length > 0 ? JSON.stringify(certifications) : null,
             rec.sup_id,
             rec.rm_ids,
+            refsValue,
           ]
         );
         stats.sp_updated += spResult.rowCount ?? 0;

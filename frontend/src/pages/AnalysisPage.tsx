@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useParams, useSearchParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -15,6 +15,10 @@ import {
   CheckCircle,
   XCircle,
   HelpCircle,
+  ExternalLink,
+  FileText,
+  BookOpen,
+  ShoppingCart,
 } from "lucide-react";
 import {
   BarChart,
@@ -34,7 +38,7 @@ import { toast } from "sonner";
 import Layout from "@/components/Layout";
 import ChatIcon from "@/components/ChatIcon";
 import ChatPanel from "@/components/ChatPanel";
-import { getComponentAnalysis, getSubstitutionCandidates, type AnalysisWeights, type AnalysisResponse, type SubstitutionResponse } from "@/lib/api";
+import { getComponentAnalysis, getSubstitutionCandidates, type AnalysisWeights, type AnalysisResponse, type SubstitutionResponse, type SubstitutionTier1 } from "@/lib/api";
 
 const SLIDER_CONFIG = [
   { key: "price",        label: "Price / Cost",            icon: DollarSign,   tooltip: "Favour lower-cost suppliers and ingredients" },
@@ -61,6 +65,21 @@ function ComplianceBadge({ value }: { value: string | null | undefined }) {
   return <span className="inline-flex items-center gap-1 text-xs text-yellow-600"><HelpCircle className="w-3 h-3" />{value}</span>;
 }
 
+function ExternalLinkButton({ href, label, icon: Icon }: { href: string | null | undefined; label: string; icon: React.ElementType }) {
+  if (!href) return null;
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded border border-border hover:bg-muted transition-colors"
+    >
+      <Icon className="w-3 h-3" />
+      {label}
+    </a>
+  );
+}
+
 const AnalysisPage = () => {
   const { productId, materialId } = useParams<{ productId: string; materialId: string }>();
   const [searchParams] = useSearchParams();
@@ -69,6 +88,8 @@ const AnalysisPage = () => {
 
   const [weights, setWeights] = useState<AnalysisWeights>(DEFAULT_WEIGHTS);
   const [chatOpen, setChatOpen] = useState(false);
+  const [chosenSubstitute, setChosenSubstitute] = useState<{ name: string; tier: number } | null>(null);
+  const [expandedRefs, setExpandedRefs] = useState(false);
 
   const componentId = parseInt(materialId || "0", 10);
 
@@ -147,6 +168,11 @@ const AnalysisPage = () => {
     toast.success("Analysis updated with new parameters");
   }, [refetch]);
 
+  const handleChooseSubstitute = useCallback((name: string, tier: number) => {
+    setChosenSubstitute({ name, tier });
+    toast.success(`Substitute selected: ${name}`);
+  }, []);
+
   const handleDownloadPDF = useCallback(() => {
     toast.success("PDF download started");
   }, []);
@@ -154,6 +180,11 @@ const AnalysisPage = () => {
   const handleSaveToHistory = useCallback(() => {
     toast.success("Saved to history");
   }, []);
+
+  const allRefs = useMemo(() => {
+    if (!substitution?.tier1) return [];
+    return substitution.tier1.flatMap(r => r.refs ?? []);
+  }, [substitution]);
 
   // Show error state
   if (isError) {
@@ -297,6 +328,20 @@ const AnalysisPage = () => {
           </>
         )}
 
+        {/* Chosen substitute banner */}
+        {chosenSubstitute && (
+          <div className="flex items-center gap-3 bg-green-50 border border-green-200 text-green-800 rounded-lg px-4 py-3 mb-6 text-sm font-medium">
+            <CheckCircle className="w-4 h-4 shrink-0" />
+            <span>Selected substitute (Tier {chosenSubstitute.tier}): <strong>{chosenSubstitute.name}</strong></span>
+            <button
+              onClick={() => setChosenSubstitute(null)}
+              className="ml-auto text-green-600 hover:text-green-800 text-xs underline"
+            >
+              Clear
+            </button>
+          </div>
+        )}
+
         {/* Substitution Candidates */}
         {subLoading && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
@@ -313,11 +358,31 @@ const AnalysisPage = () => {
 
             {/* Compliance Profile */}
             {substitution.complianceProfile && substitution.component.cas_number && (
-              <div className="bg-muted/40 rounded-lg p-4 text-sm grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div><span className="text-muted-foreground text-xs block">Vegan</span><ComplianceBadge value={substitution.complianceProfile.vegan_status} /></div>
-                <div><span className="text-muted-foreground text-xs block">Halal</span><ComplianceBadge value={substitution.complianceProfile.halal_status} /></div>
-                <div><span className="text-muted-foreground text-xs block">EU Market</span><ComplianceBadge value={substitution.complianceProfile.market_ban_eu} /></div>
-                <div><span className="text-muted-foreground text-xs block">Patent Lock</span><ComplianceBadge value={substitution.complianceProfile.patent_lock === "yes" ? "no" : substitution.complianceProfile.patent_lock === "no" ? "yes" : substitution.complianceProfile.patent_lock} /></div>
+              <div className="bg-muted/40 rounded-lg p-4 space-y-3">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+                  <div><span className="text-muted-foreground text-xs block mb-1">Vegan</span><ComplianceBadge value={substitution.complianceProfile.vegan_status} /></div>
+                  <div><span className="text-muted-foreground text-xs block mb-1">Halal</span><ComplianceBadge value={substitution.complianceProfile.halal_status} /></div>
+                  <div><span className="text-muted-foreground text-xs block mb-1">Non-GMO</span><ComplianceBadge value={substitution.complianceProfile.non_gmo_status} /></div>
+                  <div><span className="text-muted-foreground text-xs block mb-1">Organic</span><ComplianceBadge value={substitution.complianceProfile.organic_status} /></div>
+                  <div><span className="text-muted-foreground text-xs block mb-1">EU Market</span><ComplianceBadge value={substitution.complianceProfile.market_ban_eu} /></div>
+                  <div><span className="text-muted-foreground text-xs block mb-1">US Market</span><ComplianceBadge value={substitution.complianceProfile.market_ban_us} /></div>
+                  <div><span className="text-muted-foreground text-xs block mb-1">Kosher</span><ComplianceBadge value={substitution.complianceProfile.kosher_status} /></div>
+                  <div><span className="text-muted-foreground text-xs block mb-1">Patent Lock</span><ComplianceBadge value={substitution.complianceProfile.patent_lock === "yes" ? "no" : substitution.complianceProfile.patent_lock === "no" ? "yes" : substitution.complianceProfile.patent_lock} /></div>
+                </div>
+                {substitution.complianceProfile.label_form_claim && (
+                  <p className="text-xs text-muted-foreground border-t pt-2">
+                    <span className="font-medium text-foreground">Label claim: </span>
+                    {substitution.complianceProfile.label_form_claim}
+                  </p>
+                )}
+                {Array.isArray(substitution.complianceProfile.allergen_flags) && substitution.complianceProfile.allergen_flags.length > 0 && (
+                  <div className="flex flex-wrap gap-1 border-t pt-2">
+                    <span className="text-xs text-muted-foreground mr-1">Allergens:</span>
+                    {substitution.complianceProfile.allergen_flags.map((flag) => (
+                      <span key={flag} className="inline-block px-2 py-0.5 text-xs rounded-full bg-orange-100 text-orange-700 font-medium">{flag}</span>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
@@ -338,25 +403,91 @@ const AnalysisPage = () => {
                     <thead className="bg-muted/50">
                       <tr>
                         <th className="text-left px-4 py-2 font-medium">Supplier</th>
-                        <th className="text-left px-4 py-2 font-medium">Country</th>
+                        <th className="text-left px-4 py-2 font-medium hidden md:table-cell">Country</th>
                         <th className="text-left px-4 py-2 font-medium">Price/unit</th>
-                        <th className="text-left px-4 py-2 font-medium hidden sm:table-cell">Certifications</th>
+                        <th className="text-left px-4 py-2 font-medium hidden sm:table-cell">Links</th>
+                        <th className="text-left px-4 py-2 font-medium">Action</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {substitution.tier1.map((r, i) => (
-                        <tr key={r.supplier_id} className={i % 2 === 0 ? "" : "bg-muted/20"}>
-                          <td className="px-4 py-2 font-medium">{r.supplier_name}</td>
-                          <td className="px-4 py-2 text-muted-foreground">{r.country ?? "—"}</td>
-                          <td className="px-4 py-2">{r.price_per_unit != null ? `$${r.price_per_unit}` : "—"}</td>
-                          <td className="px-4 py-2 hidden sm:table-cell text-muted-foreground text-xs">
-                            {r.certifications ? Object.entries(r.certifications).map(([k, v]) => `${k}:${v}`).join(", ") : "—"}
-                          </td>
-                        </tr>
-                      ))}
+                      {substitution.tier1.map((r: SubstitutionTier1, i: number) => {
+                        const isChosen = chosenSubstitute?.name === r.supplier_name && chosenSubstitute?.tier === 1;
+                        return (
+                          <tr key={r.supplier_id} className={i % 2 === 0 ? "" : "bg-muted/20"}>
+                            <td className="px-4 py-2">
+                              <div className="font-medium">{r.supplier_name}</div>
+                              {r.certifications && Object.keys(r.certifications).length > 0 && (
+                                <div className="text-xs text-muted-foreground mt-0.5">
+                                  {Object.entries(r.certifications).map(([k, v]) => `${k}: ${v}`).join(" · ")}
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-4 py-2 text-muted-foreground hidden md:table-cell">
+                              {r.country ?? "—"}{r.region ? `, ${r.region}` : ""}
+                            </td>
+                            <td className="px-4 py-2">
+                              {r.price_per_unit != null
+                                ? <span className="font-medium">{r.price_currency ?? "$"}{r.price_per_unit}{r.price_unit ? `/${r.price_unit}` : "/unit"}</span>
+                                : <span className="text-muted-foreground">—</span>}
+                              {r.price_moq && <div className="text-xs text-muted-foreground">MOQ: {r.price_moq}</div>}
+                            </td>
+                            <td className="px-4 py-2 hidden sm:table-cell">
+                              <div className="flex flex-wrap gap-1">
+                                <ExternalLinkButton href={r.sup_url} label="Website" icon={ExternalLink} />
+                                <ExternalLinkButton href={r.product_page_url} label="Product" icon={ShoppingCart} />
+                                <ExternalLinkButton href={r.spec_sheet_url} label="Spec Sheet" icon={FileText} />
+                              </div>
+                            </td>
+                            <td className="px-4 py-2">
+                              <button
+                                onClick={() => handleChooseSubstitute(r.supplier_name, 1)}
+                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                                  isChosen
+                                    ? "bg-green-100 text-green-700 ring-1 ring-green-400"
+                                    : "bg-primary/10 text-primary hover:bg-primary/20"
+                                }`}
+                              >
+                                {isChosen ? <CheckCircle className="w-3 h-3" /> : <ShoppingCart className="w-3 h-3" />}
+                                {isChosen ? "Selected" : "Choose"}
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
+
+                {/* Sources / Refs */}
+                {allRefs.length > 0 && (
+                  <div className="mt-3 border rounded-lg overflow-hidden">
+                    <button
+                      onClick={() => setExpandedRefs(v => !v)}
+                      className="w-full flex items-center gap-2 px-4 py-2.5 bg-muted/30 hover:bg-muted/50 transition-colors text-sm font-medium text-left"
+                    >
+                      <BookOpen className="w-3.5 h-3.5 text-muted-foreground" />
+                      Sources ({allRefs.length})
+                      <span className="ml-auto text-muted-foreground text-xs">{expandedRefs ? "▲" : "▼"}</span>
+                    </button>
+                    {expandedRefs && (
+                      <ul className="divide-y divide-border">
+                        {allRefs.map((ref, i) => (
+                          <li key={i} className="px-4 py-2 text-xs flex items-start gap-2">
+                            <ExternalLink className="w-3 h-3 mt-0.5 shrink-0 text-muted-foreground" />
+                            <a
+                              href={ref.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary hover:underline break-all"
+                            >
+                              {ref.note || ref.url}
+                            </a>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -373,20 +504,37 @@ const AnalysisPage = () => {
                         <th className="text-left px-4 py-2 font-medium">Ingredient</th>
                         <th className="text-left px-4 py-2 font-medium hidden sm:table-cell">CAS</th>
                         <th className="text-left px-4 py-2 font-medium">Supplier</th>
-                        <th className="text-left px-4 py-2 font-medium">Country</th>
+                        <th className="text-left px-4 py-2 font-medium hidden md:table-cell">Country</th>
                         <th className="text-left px-4 py-2 font-medium">Vegan</th>
+                        <th className="text-left px-4 py-2 font-medium">Action</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {substitution.tier2.map((r, i) => (
-                        <tr key={`${r.cas_number}-${r.supplier_id}`} className={i % 2 === 0 ? "" : "bg-muted/20"}>
-                          <td className="px-4 py-2 font-medium">{r.canonical_name}</td>
-                          <td className="px-4 py-2 text-muted-foreground text-xs hidden sm:table-cell">{r.cas_number}</td>
-                          <td className="px-4 py-2">{r.supplier_name}</td>
-                          <td className="px-4 py-2 text-muted-foreground">{r.country ?? "—"}</td>
-                          <td className="px-4 py-2"><ComplianceBadge value={r.vegan_status} /></td>
-                        </tr>
-                      ))}
+                      {substitution.tier2.map((r, i) => {
+                        const isChosen = chosenSubstitute?.name === r.canonical_name && chosenSubstitute?.tier === 2;
+                        return (
+                          <tr key={`${r.cas_number}-${r.supplier_id}`} className={i % 2 === 0 ? "" : "bg-muted/20"}>
+                            <td className="px-4 py-2 font-medium">{r.canonical_name}</td>
+                            <td className="px-4 py-2 text-muted-foreground text-xs hidden sm:table-cell font-mono">{r.cas_number}</td>
+                            <td className="px-4 py-2">{r.supplier_name}</td>
+                            <td className="px-4 py-2 text-muted-foreground hidden md:table-cell">{r.country ?? "—"}</td>
+                            <td className="px-4 py-2"><ComplianceBadge value={r.vegan_status} /></td>
+                            <td className="px-4 py-2">
+                              <button
+                                onClick={() => handleChooseSubstitute(r.canonical_name, 2)}
+                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                                  isChosen
+                                    ? "bg-green-100 text-green-700 ring-1 ring-green-400"
+                                    : "bg-primary/10 text-primary hover:bg-primary/20"
+                                }`}
+                              >
+                                {isChosen ? <CheckCircle className="w-3 h-3" /> : <ShoppingCart className="w-3 h-3" />}
+                                {isChosen ? "Selected" : "Choose"}
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -404,8 +552,22 @@ const AnalysisPage = () => {
                     Tier {substitution.aiRecommendation.tier} · {Math.round(substitution.aiRecommendation.confidence * 100)}% confidence
                   </span>
                 </div>
-                <p className="text-lg font-bold mb-4">{substitution.aiRecommendation.recommendation}</p>
-                <div className="space-y-3">
+                <div className="flex items-start justify-between gap-4 mb-5">
+                  <p className="text-lg font-bold">{substitution.aiRecommendation.recommendation}</p>
+                  <button
+                    onClick={() => handleChooseSubstitute(substitution.aiRecommendation!.recommendation, substitution.aiRecommendation!.tier)}
+                    className={`shrink-0 inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                      chosenSubstitute?.name === substitution.aiRecommendation.recommendation
+                        ? "bg-green-100 text-green-700 ring-1 ring-green-400"
+                        : "bg-primary text-primary-foreground hover:bg-primary/90"
+                    }`}
+                  >
+                    {chosenSubstitute?.name === substitution.aiRecommendation.recommendation
+                      ? <><CheckCircle className="w-4 h-4" /> Selected</>
+                      : <><ShoppingCart className="w-4 h-4" /> Choose as Substitute</>}
+                  </button>
+                </div>
+                <div className="space-y-3 border-t pt-4">
                   {[
                     { label: "Functional Equivalence", key: "functional_equivalence" as const },
                     { label: "Compliance Fit",         key: "compliance_fit" as const },
@@ -416,7 +578,7 @@ const AnalysisPage = () => {
                     if (!text) return null;
                     return (
                       <div key={key} className="flex gap-3 text-sm">
-                        <span className="font-medium text-muted-foreground w-40 shrink-0">{label}</span>
+                        <span className="font-semibold text-muted-foreground w-44 shrink-0">{label}</span>
                         <span>{text}</span>
                       </div>
                     );

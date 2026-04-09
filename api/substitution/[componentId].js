@@ -50,7 +50,7 @@ export default async function handler(req, res) {
         ip.halal_status, ip.kosher_status,
         ip.non_gmo_status, ip.organic_status,
         ip.patent_lock, ip.single_manufacturer,
-        ip.allergen_flags, ip.label_form_claim,
+        ip.allergen_flags, ip.label_form_claim, ip.health_claim_form,
         sp.supplier_id AS current_supplier_id,
         s.name AS current_supplier_name,
         sp.country AS current_country,
@@ -82,9 +82,13 @@ export default async function handler(req, res) {
           sp.region,
           sp.price_per_unit,
           sp.price_unit,
+          sp.price_moq,
+          sp.price_currency,
           sp.certifications,
           sp.sup_url,
-          sp.product_page_url
+          sp.product_page_url,
+          sp.spec_sheet_url,
+          sp.refs
         FROM component_normalized cn
         JOIN supplier_product sp ON sp.product_id = cn.raw_product_id
         JOIN supplier s ON s.id = sp.supplier_id
@@ -226,10 +230,15 @@ Respond ONLY with valid JSON in this exact format (no markdown, no explanation o
         vegetarian_status: base.vegetarian_status,
         halal_status: base.halal_status,
         kosher_status: base.kosher_status,
+        non_gmo_status: base.non_gmo_status,
+        organic_status: base.organic_status,
         market_ban_eu: base.market_ban_eu,
         market_ban_us: base.market_ban_us,
         patent_lock: base.patent_lock,
         single_manufacturer: base.single_manufacturer,
+        allergen_flags: base.allergen_flags ?? [],
+        label_form_claim: base.label_form_claim,
+        health_claim_form: base.health_claim_form,
       },
       tier1,
       tier2,
