@@ -104,14 +104,22 @@ const encodeAudioBufferToWav = (audioBuffer: AudioBuffer): Blob => {
 
 const transcodeToWavIfPossible = async (source: Blob): Promise<Blob | null> => {
   if (source.type.toLowerCase().includes("wav")) return source;
-  if (!AudioContextClass) return null;
+  if (!AudioContextClass) {
+    console.log("[VoiceIO] No AudioContext, cannot transcode");
+    return null;
+  }
 
   const context = new AudioContextClass();
   try {
     const arrayBuffer = await source.arrayBuffer();
+    console.log("[VoiceIO] Decoding audio buffer, size:", arrayBuffer.byteLength);
     const decoded = await context.decodeAudioData(arrayBuffer.slice(0));
-    return encodeAudioBufferToWav(decoded);
-  } catch {
+    console.log("[VoiceIO] Audio decoded, duration:", decoded.duration, "sampleRate:", decoded.sampleRate);
+    const wavBlob = encodeAudioBufferToWav(decoded);
+    console.log("[VoiceIO] WAV encoded, size:", wavBlob.size);
+    return wavBlob;
+  } catch (err) {
+    console.error("[VoiceIO] Transcode to WAV failed:", err);
     return null;
   } finally {
     void context.close();
@@ -252,14 +260,27 @@ export function useVoiceIO(options: UseVoiceIOOptions = {}): UseVoiceIOReturn {
    * Transcribe audio blob using ElevenLabs STT
    */
   const transcribeAudio = useCallback(async (audioBlob: Blob): Promise<string> => {
+    console.log("[VoiceIO] Transcribing audio, original type:", audioBlob.type, "size:", audioBlob.size);
+
+    // Always try to transcode to WAV for better compatibility with ElevenLabs
+    let uploadBlob = audioBlob;
+    let extension = "webm";
+
     const transcoded = await transcodeToWavIfPossible(audioBlob);
-    const uploadBlob = transcoded ?? audioBlob;
-    const extension = extensionForMimeType(uploadBlob.type || audioBlob.type || "audio/webm");
+    if (transcoded) {
+      console.log("[VoiceIO] Successfully transcoded to WAV, size:", transcoded.size);
+      uploadBlob = transcoded;
+      extension = "wav";
+    } else {
+      console.log("[VoiceIO] WAV transcoding failed, using original format");
+      extension = extensionForMimeType(audioBlob.type || "audio/webm");
+    }
 
     const formData = new FormData();
     formData.append("file", uploadBlob, `agnes-input.${extension}`);
     formData.append("model_id", ELEVENLABS_STT_MODEL_ID);
 
+    console.log("[VoiceIO] Sending to STT API, filename:", `agnes-input.${extension}`);
     const response = await fetch("/api/elevenlabs/stt", {
       method: "POST",
       body: formData,
@@ -267,11 +288,14 @@ export function useVoiceIO(options: UseVoiceIOOptions = {}): UseVoiceIOReturn {
 
     if (!response.ok) {
       const errorText = await response.text();
+      console.error("[VoiceIO] STT API error:", errorText);
       throw new Error(`STT request failed: ${errorText}`);
     }
 
     const data = (await response.json()) as { text?: string; transcript?: string };
-    return (data.text ?? data.transcript ?? "").trim();
+    const result = (data.text ?? data.transcript ?? "").trim();
+    console.log("[VoiceIO] STT result:", result);
+    return result;
   }, []);
 
   /**
