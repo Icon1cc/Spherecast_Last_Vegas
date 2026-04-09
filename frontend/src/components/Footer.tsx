@@ -15,7 +15,7 @@ const Footer = () => {
       <div className="flex items-center justify-between w-full max-w-7xl mx-auto">
         <div className="flex items-center gap-2">
           <img
-            src="/logo-wordmark.png"
+            src="/gemini-svg.svg"
             alt="SupplyWise AI logo"
             className="h-6 w-[120px] object-contain"
           />

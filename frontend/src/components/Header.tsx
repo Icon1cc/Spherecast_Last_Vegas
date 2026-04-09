@@ -13,7 +13,7 @@ const Header = () => {
       <div className="flex items-center justify-between w-full max-w-7xl mx-auto">
         <Link to="/" className="group">
           <img
-            src="/logo-wordmark.png"
+            src="/gemini-svg.svg"
             alt="SupplyWise AI"
             className="h-9 w-[220px] max-w-[52vw] object-contain"
           />

@@ -14,16 +14,108 @@ const ELEVENLABS_TTS_MODEL_ID =
 const ELEVENLABS_STT_MODEL_ID =
   import.meta.env.VITE_ELEVENLABS_STT_MODEL_ID?.trim() ?? "scribe_v1";
 
-// Voice detection constants
-const BASE_SILENCE_THRESHOLD = 0.03;
-const MIN_DYNAMIC_SILENCE_THRESHOLD = 0.02;
-const MAX_DYNAMIC_SILENCE_THRESHOLD = 0.09;
-const SILENCE_THRESHOLD_MULTIPLIER = 2.2;
-const NOISE_CALIBRATION_MS = 700;
-const SILENCE_DURATION_MS = 900;
-const NO_SPEECH_TIMEOUT_MS = 6000;
-const MAX_RECORDING_MS = 20000;
+// Voice detection constants - tuned for reliable speech detection
+const BASE_SILENCE_THRESHOLD = 0.015;       // Lower = more sensitive to quiet speech
+const MIN_DYNAMIC_SILENCE_THRESHOLD = 0.01; // Minimum threshold floor
+const MAX_DYNAMIC_SILENCE_THRESHOLD = 0.06; // Maximum threshold ceiling
+const SILENCE_THRESHOLD_MULTIPLIER = 1.8;   // How much above ambient noise to trigger
+const NOISE_CALIBRATION_MS = 500;           // Time to calibrate ambient noise
+const SILENCE_DURATION_MS = 1200;           // How long silence before stopping (ms)
+const NO_SPEECH_TIMEOUT_MS = 10000;         // Max wait for speech to start (10s)
+const MAX_RECORDING_MS = 30000;             // Max recording duration (30s)
 const TTS_CHUNK_MAX_CHARS = 180;
+const MIN_AUDIO_BYTES_FOR_STT = 4096;
+const RECORDER_MIME_CANDIDATES = [
+  "audio/webm;codecs=opus",
+  "audio/webm",
+  "audio/mp4",
+  "audio/ogg;codecs=opus",
+];
+
+const AudioContextClass =
+  typeof window !== "undefined"
+    ? window.AudioContext ||
+      (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+    : undefined;
+
+const pickSupportedRecorderMimeType = (): string | null => {
+  if (typeof MediaRecorder === "undefined" || typeof MediaRecorder.isTypeSupported !== "function") {
+    return null;
+  }
+  return RECORDER_MIME_CANDIDATES.find((mime) => MediaRecorder.isTypeSupported(mime)) ?? null;
+};
+
+const extensionForMimeType = (mimeType: string): string => {
+  const normalized = mimeType.toLowerCase();
+  if (normalized.includes("wav")) return "wav";
+  if (normalized.includes("mp4") || normalized.includes("m4a")) return "m4a";
+  if (normalized.includes("ogg")) return "ogg";
+  if (normalized.includes("mpeg") || normalized.includes("mp3")) return "mp3";
+  return "webm";
+};
+
+const encodeAudioBufferToWav = (audioBuffer: AudioBuffer): Blob => {
+  const channelCount = audioBuffer.numberOfChannels;
+  const sampleRate = audioBuffer.sampleRate;
+  const frameCount = audioBuffer.length;
+  const bytesPerSample = 2;
+  const blockAlign = channelCount * bytesPerSample;
+  const byteRate = sampleRate * blockAlign;
+  const dataSize = frameCount * blockAlign;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+
+  const writeString = (offset: number, value: string) => {
+    for (let i = 0; i < value.length; i += 1) {
+      view.setUint8(offset + i, value.charCodeAt(i));
+    }
+  };
+
+  writeString(0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeString(8, "WAVE");
+  writeString(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, channelCount, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, 16, true);
+  writeString(36, "data");
+  view.setUint32(40, dataSize, true);
+
+  const channels = Array.from({ length: channelCount }, (_, index) =>
+    audioBuffer.getChannelData(index)
+  );
+
+  let offset = 44;
+  for (let i = 0; i < frameCount; i += 1) {
+    for (let channel = 0; channel < channelCount; channel += 1) {
+      const sample = Math.max(-1, Math.min(1, channels[channel][i]));
+      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+      offset += bytesPerSample;
+    }
+  }
+
+  return new Blob([buffer], { type: "audio/wav" });
+};
+
+const transcodeToWavIfPossible = async (source: Blob): Promise<Blob | null> => {
+  if (source.type.toLowerCase().includes("wav")) return source;
+  if (!AudioContextClass) return null;
+
+  const context = new AudioContextClass();
+  try {
+    const arrayBuffer = await source.arrayBuffer();
+    const decoded = await context.decodeAudioData(arrayBuffer.slice(0));
+    return encodeAudioBufferToWav(decoded);
+  } catch {
+    return null;
+  } finally {
+    void context.close();
+  }
+};
 
 /**
  * Normalize text for TTS - remove markdown and clean up
@@ -111,6 +203,7 @@ export function useVoiceIO(options: UseVoiceIOOptions = {}): UseVoiceIOReturn {
   const maxRecordingTimeoutRef = useRef<number | null>(null);
   const speechRequestIdRef = useRef(0);
   const isSpeakingRef = useRef(false);
+  const recordingMimeTypeRef = useRef<string>("audio/webm");
 
   // Cleanup helpers
   const stopMicrophoneTracks = useCallback(() => {
@@ -158,8 +251,12 @@ export function useVoiceIO(options: UseVoiceIOOptions = {}): UseVoiceIOReturn {
    * Transcribe audio blob using ElevenLabs STT
    */
   const transcribeAudio = useCallback(async (audioBlob: Blob): Promise<string> => {
+    const transcoded = await transcodeToWavIfPossible(audioBlob);
+    const uploadBlob = transcoded ?? audioBlob;
+    const extension = extensionForMimeType(uploadBlob.type || audioBlob.type || "audio/webm");
+
     const formData = new FormData();
-    formData.append("file", audioBlob, "agnes-demo.webm");
+    formData.append("file", uploadBlob, `jarvis-input.${extension}`);
     formData.append("model_id", ELEVENLABS_STT_MODEL_ID);
 
     const response = await fetch("/api/elevenlabs/stt", {
@@ -319,9 +416,6 @@ export function useVoiceIO(options: UseVoiceIOOptions = {}): UseVoiceIOReturn {
         },
       });
       mediaStreamRef.current = stream;
-
-      const recorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = recorder;
       audioChunksRef.current = [];
       silenceStartTimestampRef.current = null;
       speechDetectedRef.current = false;
@@ -333,10 +427,6 @@ export function useVoiceIO(options: UseVoiceIOOptions = {}): UseVoiceIOReturn {
       };
 
       // Set up audio analysis for silence detection
-      const AudioContextClass =
-        window.AudioContext ||
-        (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-
       if (AudioContextClass) {
         const audioContext = new AudioContextClass();
         const analyser = audioContext.createAnalyser();
@@ -410,11 +500,12 @@ export function useVoiceIO(options: UseVoiceIOOptions = {}): UseVoiceIOReturn {
         stopListening();
       }, MAX_RECORDING_MS);
 
-      recorder.ondataavailable = (event: BlobEvent) => {
+      const handleDataAvailable = (event: BlobEvent) => {
         if (event.data.size > 0) audioChunksRef.current.push(event.data);
       };
 
-      recorder.onstop = async () => {
+      const handleStop = async () => {
+        const didDetectSpeech = speechDetectedRef.current;
         stopVoiceMonitor();
         stopMicrophoneTracks();
         mediaRecorderRef.current = null;
@@ -425,7 +516,20 @@ export function useVoiceIO(options: UseVoiceIOOptions = {}): UseVoiceIOReturn {
 
         setIsProcessing(true);
         try {
-          const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+          if (!didDetectSpeech) {
+            options.onError?.(new Error("No speech detected"), "stt");
+            return;
+          }
+
+          const audioBlob = new Blob(audioChunksRef.current, {
+            type: audioChunksRef.current[0]?.type || recordingMimeTypeRef.current || "audio/webm",
+          });
+
+          if (audioBlob.size < MIN_AUDIO_BYTES_FOR_STT) {
+            options.onError?.(new Error("Recording too short. Please speak a bit longer."), "stt");
+            return;
+          }
+
           const transcript = await transcribeAudio(audioBlob);
 
           if (transcript) {
@@ -442,7 +546,25 @@ export function useVoiceIO(options: UseVoiceIOOptions = {}): UseVoiceIOReturn {
         }
       };
 
-      recorder.start(250);
+      const preferredMimeType = pickSupportedRecorderMimeType();
+      if (preferredMimeType) {
+        const mimeRecorder = new MediaRecorder(stream, { mimeType: preferredMimeType });
+        mediaRecorderRef.current = mimeRecorder;
+        recordingMimeTypeRef.current = mimeRecorder.mimeType || preferredMimeType;
+      } else {
+        const defaultRecorder = new MediaRecorder(stream);
+        mediaRecorderRef.current = defaultRecorder;
+        recordingMimeTypeRef.current = defaultRecorder.mimeType || "audio/webm";
+      }
+
+      const activeRecorder = mediaRecorderRef.current;
+      if (!activeRecorder) {
+        throw new Error("Unable to initialize media recorder");
+      }
+
+      activeRecorder.ondataavailable = handleDataAvailable;
+      activeRecorder.onstop = handleStop;
+      activeRecorder.start(250);
       setIsListening(true);
       options.onListeningStart?.();
     } catch (error) {
