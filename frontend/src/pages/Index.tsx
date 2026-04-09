@@ -1,10 +1,11 @@
 import { useState, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search, Loader2, AlertCircle } from "lucide-react";
+import { Search, Loader2, AlertCircle, Sparkles } from "lucide-react";
 import Layout from "@/components/Layout";
 import ChatIcon from "@/components/ChatIcon";
 import ChatPanel from "@/components/ChatPanel";
 import RawMaterialsModal from "@/components/RawMaterialsModal";
+import JarvisDemoOverlay from "@/components/demo/JarvisDemoOverlay";
 import { getProducts, getProductBom, type Product, type BomComponent } from "@/lib/api";
 
 const ITEMS_PER_PAGE = 10;
@@ -14,6 +15,7 @@ const Dashboard = () => {
   const [page, setPage] = useState(1);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
+  const [demoOpen, setDemoOpen] = useState(false);
 
   // Fetch products from API
   const {
@@ -64,8 +66,16 @@ const Dashboard = () => {
     setChatOpen(false);
   }, []);
 
+  const handleOpenDemo = useCallback(() => {
+    setDemoOpen(true);
+  }, []);
+
+  const handleCloseDemo = useCallback(() => {
+    setDemoOpen(false);
+  }, []);
+
   const isModalOpen = selectedProduct !== null;
-  const showChatIcon = !isModalOpen && !chatOpen;
+  const showChatIcon = !isModalOpen && !chatOpen && !demoOpen;
 
   const materials: BomComponent[] = bomData?.components ?? [];
   const bomErrorMessage = isBomError
@@ -79,9 +89,19 @@ const Dashboard = () => {
       <main className="max-w-5xl mx-auto px-4 py-8 animate-fade-in">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold tracking-tight">Product Dashboard</h1>
-          {!isLoading && (
-            <span className="text-sm text-muted-foreground">{total} products</span>
-          )}
+          <div className="flex items-center gap-4">
+            {/* Jarvis Demo Button */}
+            <button
+              onClick={handleOpenDemo}
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-gray-800 to-gray-900 text-white text-sm font-medium rounded-lg shadow-lg hover:shadow-xl hover:from-gray-700 hover:to-gray-800 transition-all duration-200 hover-lift group"
+            >
+              <Sparkles className="w-4 h-4 group-hover:animate-pulse" />
+              <span>Start Demo</span>
+            </button>
+            {!isLoading && (
+              <span className="text-sm text-muted-foreground">{total} products</span>
+            )}
+          </div>
         </div>
 
         {/* Search Input */}
@@ -223,6 +243,9 @@ const Dashboard = () => {
 
       <ChatIcon onClick={handleOpenChat} visible={showChatIcon} />
       <ChatPanel open={chatOpen} onClose={handleCloseChat} />
+
+      {/* Jarvis Demo Overlay */}
+      <JarvisDemoOverlay isOpen={demoOpen} onClose={handleCloseDemo} />
     </Layout>
   );
 };
