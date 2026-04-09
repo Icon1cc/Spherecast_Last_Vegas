@@ -475,9 +475,16 @@ const AnalysisPage = () => {
             {/* Tier 1 */}
             {substitution.tier1.length > 0 && (
               <div>
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">
                   Tier 1 — Same Molecule, Alternative Suppliers
                 </h3>
+                {/* Static rationale — TODO: replace with per-row Gemini reasoning comparing price, certs, supply risk across suppliers */}
+                <p className="text-xs text-muted-foreground mb-2">
+                  Identical active compound
+                  {substitution.component.cas_number ? ` (CAS ${substitution.component.cas_number})` : ""}
+                  {substitution.component.canonical_name ? ` · ${substitution.component.canonical_name}` : ""}.
+                  Drop-in replacement — no reformulation or label change required.
+                </p>
                 <div className="border rounded-lg overflow-hidden">
                   <table className="w-full text-sm">
                     <thead className="bg-muted/50">
@@ -574,9 +581,15 @@ const AnalysisPage = () => {
             {/* Tier 2 */}
             {substitution.tier2.length > 0 && (
               <div>
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">
                   Tier 2 — Same Function, Compliance-Compatible
                 </h3>
+                {/* Static rationale — TODO: replace with Gemini-generated per-row reasoning evaluating bioequivalence, label impact, cost delta */}
+                <p className="text-xs text-muted-foreground mb-2">
+                  Different molecule, same functional role
+                  {substitution.component.functional_role ? ` (${substitution.component.functional_role})` : ""}.
+                  Each candidate matches the compliance profile of the current ingredient — verify bioequivalence and dosage before switching.
+                </p>
                 <div className="border rounded-lg overflow-hidden">
                   <table className="w-full text-sm">
                     <thead className="bg-muted/50">
