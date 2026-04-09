@@ -70,7 +70,7 @@ function demoReducer(state: DemoState, action: DemoAction): DemoState {
         phase: "THINKING",
       };
 
-    case "AI_RESPONSE":
+    case "AI_RESPONSE": {
       const newTranscript: TranscriptEntry = {
         id: crypto.randomUUID(),
         role: "jarvis",
@@ -88,6 +88,7 @@ function demoReducer(state: DemoState, action: DemoAction): DemoState {
           { role: "assistant", content: action.payload.speech },
         ],
       };
+    }
 
     case "SPEECH_START":
       return {
@@ -207,24 +208,14 @@ export function useJarvisDemo(options: UseJarvisDemoOptions = {}): UseJarvisDemo
    * Send message to AI and get response
    */
   const sendToAI = useCallback(async (message: string, history: Array<{ role: "user" | "assistant"; content: string }>) => {
-    const response = await fetch("/api/chat/demo", {
+    const response = await fetch("/api/chat/message", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message, history, isDemo: true }),
     });
 
     if (!response.ok) {
-      // Fallback to regular chat endpoint
-      const fallbackResponse = await fetch("/api/chat/message", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message, history }),
-      });
-      if (!fallbackResponse.ok) {
-        throw new Error("Failed to get AI response");
-      }
-      const data = await fallbackResponse.json();
-      return data.response as string;
+      throw new Error("Failed to get AI response");
     }
 
     const data = await response.json();
@@ -247,13 +238,14 @@ export function useJarvisDemo(options: UseJarvisDemoOptions = {}): UseJarvisDemo
           navigate("/");
         }
         break;
-      case "ANALYSIS":
+      case "ANALYSIS": {
         const params = new URLSearchParams({
           product: target.productName || "Product",
           material: target.materialName || "Material",
         });
         navigate(`/analysis/${target.productId}/${target.materialId}?${params}`);
         break;
+      }
     }
 
     // Wait for navigation to settle

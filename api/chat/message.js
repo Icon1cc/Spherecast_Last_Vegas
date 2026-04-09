@@ -4,6 +4,7 @@ import {
   GEMINI_DEFAULT_MODEL,
   GEMINI_MAX_OUTPUT_TOKENS,
   GEMINI_TEMPERATURE,
+  JARVIS_DEMO_SYSTEM_PROMPT,
   JARVIS_SYSTEM_PROMPT,
 } from "../lib/constants.js";
 import { validateNonEmptyString } from "../lib/validation.js";
@@ -22,6 +23,56 @@ const SEARCH_TRIGGERS = [
 function needsWebSearch(message) {
   const lowerMessage = message.toLowerCase();
   return SEARCH_TRIGGERS.some(trigger => lowerMessage.includes(trigger));
+}
+
+/**
+ * Fetches product catalog for demo AI context.
+ * @param {import('pg').Pool} pool - Database connection pool
+ * @returns {Promise<Array|null>} Sample products or null on failure
+ */
+async function getProductsForDemo(pool) {
+  if (!pool) return null;
+
+  try {
+    const result = await pool.query(`
+      SELECT id, sku as name,
+             (SELECT c.name FROM company c WHERE c.id = p.company_id) as company
+      FROM product p
+      WHERE type = 'finished-good'
+      ORDER BY id
+      LIMIT 20
+    `);
+    return result.rows;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fetches materials for a product.
+ * @param {import('pg').Pool} pool - Database connection pool
+ * @param {number} productId - Product ID
+ * @returns {Promise<Array|null>} Materials or null on failure
+ */
+async function getMaterialsForProduct(pool, productId) {
+  if (!pool || !productId) return null;
+
+  try {
+    const result = await pool.query(`
+      SELECT DISTINCT
+        rm.id as material_id,
+        rm.sku as material_name
+      FROM product fg
+      JOIN bom ON bom.finished_good_id = fg.id
+      JOIN product rm ON rm.id = bom.raw_material_id
+      WHERE fg.id = $1
+      ORDER BY rm.sku
+      LIMIT 10
+    `, [productId]);
+    return result.rows;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -69,19 +120,31 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { message, history = [] } = req.body || {};
+    const { message, history = [], isDemo = false } = req.body || {};
+    const demoMode = Boolean(isDemo);
 
     const { valid, error } = validateNonEmptyString(message, "Message");
     if (!valid) {
       return res.status(400).json({ error });
     }
 
-    // DB context is optional for chat quality; do not block chat if DB is unavailable.
+    // DB context is optional; do not block chat if DB is unavailable.
     let dbContext = null;
+    let products = null;
+    let demoMaterials = null;
     let pool;
     try {
       pool = createPool();
-      dbContext = await getDbContext(pool);
+      if (demoMode) {
+        products = await getProductsForDemo(pool);
+        const productIdMatch = message.match(/product\s*(?:id\s*)?(\d+)/i);
+        if (productIdMatch) {
+          const productId = parseInt(productIdMatch[1], 10);
+          demoMaterials = await getMaterialsForProduct(pool, productId);
+        }
+      } else {
+        dbContext = await getDbContext(pool);
+      }
     } catch (dbError) {
       console.warn("Chat API DB context unavailable:", dbError);
     } finally {
@@ -89,13 +152,26 @@ export default async function handler(req, res) {
     }
 
     // Build context-aware prompt
-    let contextPrompt = JARVIS_SYSTEM_PROMPT;
-    if (dbContext) {
+    let contextPrompt = demoMode ? JARVIS_DEMO_SYSTEM_PROMPT : JARVIS_SYSTEM_PROMPT;
+    if (!demoMode && dbContext) {
       contextPrompt += `\n\nDatabase context: ${dbContext.productCount} products, ${dbContext.supplierCount} suppliers, ${dbContext.companyCount} companies.`;
+    }
+    if (demoMode && products && products.length > 0) {
+      const productList = products
+        .slice(0, 10)
+        .map((product) => `- ID ${product.id}: ${product.name} (${product.company || "Unknown"})`)
+        .join("\n");
+      contextPrompt += `\n\nAvailable products in database:\n${productList}\n\nWhen user asks about products or analysis, use these real product IDs in navigation commands.`;
+    }
+    if (demoMode && demoMaterials && demoMaterials.length > 0) {
+      const materialList = demoMaterials
+        .map((material) => `- Material ID ${material.material_id}: ${material.material_name}`)
+        .join("\n");
+      contextPrompt += `\n\nMaterials for referenced product:\n${materialList}`;
     }
 
     // Check if we should use search grounding
-    const useSearch = needsWebSearch(message);
+    const useSearch = !demoMode && needsWebSearch(message);
 
     // Initialize Gemini
     const genAI = new GoogleGenerativeAI(apiKey);
@@ -157,7 +233,14 @@ Provide a helpful, accurate response. If you used search results, mention the so
       // Build chat history
       const chatHistory = [
         { role: "user", parts: [{ text: contextPrompt }] },
-        { role: "model", parts: [{ text: "Understood. I'm Jarvis, ready to help with supply chain decisions. How can I assist you?" }] },
+        {
+          role: "model",
+          parts: [{
+            text: demoMode
+              ? "Ready to guide you through SupplyWise. What would you like to explore?"
+              : "Understood. I'm Jarvis, ready to help with supply chain decisions. How can I assist you?",
+          }],
+        },
         ...history.map((msg) => ({
           role: msg.role === "user" ? "user" : "model",
           parts: [{ text: msg.content }],
@@ -168,7 +251,7 @@ Provide a helpful, accurate response. If you used search results, mention the so
         history: chatHistory,
         generationConfig: {
           maxOutputTokens: GEMINI_MAX_OUTPUT_TOKENS,
-          temperature: GEMINI_TEMPERATURE,
+          temperature: demoMode ? 0.4 : GEMINI_TEMPERATURE,
         },
       });
 
