@@ -12,16 +12,20 @@ const Header = () => {
     <header className="fixed top-0 left-0 right-0 z-50 h-16 bg-header flex items-center px-6">
       <div className="flex items-center justify-between w-full max-w-7xl mx-auto">
         <Link to="/" className="flex items-center gap-3 group">
-          <div className="w-12 h-12 rounded-full bg-white overflow-hidden ring-1 ring-header-foreground/20 group-hover:ring-header-foreground/40 transition-colors">
+          <div className="w-10 h-10 rounded-full bg-white overflow-hidden ring-1 ring-header-foreground/20 group-hover:ring-header-foreground/40 transition-colors">
             <img
               src="/logo.jpeg"
               alt="SupplyWise AI logo"
-              className="w-full h-full object-contain scale-[5.5]"
+              className="w-full h-full object-contain"
             />
           </div>
-          <span className="text-header-foreground font-bold text-lg tracking-tight">
-            SupplyWise AI
-          </span>
+          <div className="h-9 w-[210px] max-w-[52vw]">
+            <img
+              src="/logo.jpeg"
+              alt="SupplyWise AI"
+              className="w-full h-full object-contain"
+            />
+          </div>
         </Link>
         <nav className="flex items-center gap-4">
           {NAV_ITEMS.map(({ label, icon: Icon, href }) => (
