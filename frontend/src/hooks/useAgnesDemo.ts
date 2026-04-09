@@ -220,24 +220,15 @@ export function useAgnesDemo(options: UseAgnesDemoOptions = {}): UseAgnesDemoRet
    * Send message to AI and get response
    */
   const sendToAI = useCallback(async (message: string, history: Array<{ role: "user" | "assistant"; content: string }>) => {
-    const response = await fetch("/api/chat/demo", {
+    // Use the main chat endpoint with isDemo flag - this uses the demo system prompt
+    const response = await fetch("/api/chat/message", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message, history, isDemo: true }),
     });
 
     if (!response.ok) {
-      // Fallback to regular chat endpoint
-      const fallbackResponse = await fetch("/api/chat/message", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message, history }),
-      });
-      if (!fallbackResponse.ok) {
-        throw new Error("Failed to get AI response");
-      }
-      const data = await fallbackResponse.json();
-      return data.response as string;
+      throw new Error("Failed to get AI response");
     }
 
     const data = await response.json();

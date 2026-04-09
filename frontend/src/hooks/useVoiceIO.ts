@@ -257,7 +257,7 @@ export function useVoiceIO(options: UseVoiceIOOptions = {}): UseVoiceIOReturn {
     const extension = extensionForMimeType(uploadBlob.type || audioBlob.type || "audio/webm");
 
     const formData = new FormData();
-    formData.append("file", uploadBlob, `jarvis-input.${extension}`);
+    formData.append("file", uploadBlob, `agnes-input.${extension}`);
     formData.append("model_id", ELEVENLABS_STT_MODEL_ID);
 
     const response = await fetch("/api/elevenlabs/stt", {
