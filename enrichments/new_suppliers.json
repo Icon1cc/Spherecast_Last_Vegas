@@ -1,0 +1,1024 @@
+[
+  {
+    "canonical_name": "ACG Capsules",
+    "existing_db_name": null,
+    "url": "https://www.acgworld.com",
+    "product_url": null,
+    "country": "IN",
+    "region": "asia",
+    "cas_numbers": [
+      "9000-70-8"
+    ],
+    "source_records": [
+      "gelatin-capsule-bovine__9__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Alland & Robert",
+    "existing_db_name": null,
+    "url": "https://www.alland.fr",
+    "product_url": null,
+    "country": "FR",
+    "region": "europe",
+    "cas_numbers": [
+      "9000-01-5"
+    ],
+    "source_records": [
+      "acacia-gum__18__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Anhui Jinhe Industrial",
+    "existing_db_name": null,
+    "url": "https://www.jinhe.com",
+    "product_url": null,
+    "country": "CN",
+    "region": "asia",
+    "cas_numbers": [
+      "55589-62-3"
+    ],
+    "source_records": [
+      "acesulfame-potassium__10__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Anmol Chemicals Group",
+    "existing_db_name": null,
+    "url": "https://anmol.org",
+    "product_url": "http://anmol.org/croscarmellosesodiummanufacturers.html",
+    "country": "IN",
+    "region": "asia",
+    "cas_numbers": [
+      "74811-65-7"
+    ],
+    "source_records": [
+      "croscarmellose-sodium__5__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Ariza",
+    "existing_db_name": null,
+    "url": "https://www.arizanutrilife.com",
+    "product_url": null,
+    "country": "IN",
+    "region": "asia",
+    "cas_numbers": [],
+    "source_records": [
+      "beet-powder__4__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Asahi Kasei (Ceolus)",
+    "existing_db_name": null,
+    "url": "https://www.asahi-kasei.co.jp",
+    "product_url": null,
+    "country": "JP",
+    "region": "asia",
+    "cas_numbers": [
+      "9004-34-6"
+    ],
+    "source_records": [
+      "cellulose__5__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Balchem",
+    "existing_db_name": "Balchem",
+    "url": "https://www.albionminerals.com",
+    "product_url": null,
+    "country": "US",
+    "region": "north_america",
+    "cas_numbers": [
+      "14783-68-7"
+    ],
+    "source_records": [
+      "magnesium-glycinate__6__20260409"
+    ]
+  },
+  {
+    "canonical_name": "BASF",
+    "existing_db_name": null,
+    "url": "https://www.basf.com",
+    "product_url": "https://pharma.basf.com/chemistry/polyethylene-glycols",
+    "country": "DE",
+    "region": "europe",
+    "cas_numbers": [
+      "67-97-0",
+      "137-08-6",
+      "25322-68-3",
+      "83-88-5",
+      "1406-66-2",
+      "7695-91-2"
+    ],
+    "source_records": [
+      "b-vitamins__27__20260409",
+      "cholecalciferol-vitamin-d3__27__20260409",
+      "pantothenic-acid__27__20260409",
+      "polyethylene-glycol__33__20260409",
+      "riboflavin__27__20260409",
+      "tocopherols__27__20260409",
+      "vitamin-e__27__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Brother Enterprises",
+    "existing_db_name": null,
+    "url": "https://www.brother-enterprises.com",
+    "product_url": null,
+    "country": "CN",
+    "region": "asia",
+    "cas_numbers": [
+      "532-43-4"
+    ],
+    "source_records": [
+      "thiamine__27__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Brüggemann Alcohol",
+    "existing_db_name": null,
+    "url": "https://www.brueggemann.com",
+    "product_url": null,
+    "country": "DE",
+    "region": "europe",
+    "cas_numbers": [
+      "1314-13-2"
+    ],
+    "source_records": [
+      "zinc__19__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Cabot Corporation",
+    "existing_db_name": null,
+    "url": "https://www.cabotcorp.com",
+    "product_url": null,
+    "country": "US",
+    "region": "north_america",
+    "cas_numbers": [
+      "7631-86-9"
+    ],
+    "source_records": [
+      "silica__5__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Cargill",
+    "existing_db_name": "Cargill",
+    "url": "https://www.cargill.com",
+    "product_url": null,
+    "country": "US",
+    "region": "north_america",
+    "cas_numbers": [
+      "77-92-9",
+      "9050-36-6"
+    ],
+    "source_records": [
+      "citric-acid__27__20260409",
+      "maltodextrin__18__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Celanese (Nutrinova)",
+    "existing_db_name": null,
+    "url": "https://www.celanese.com",
+    "product_url": null,
+    "country": "US",
+    "region": "north_america",
+    "cas_numbers": [
+      "55589-62-3"
+    ],
+    "source_records": [
+      "acesulfame-potassium__10__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Chemours",
+    "existing_db_name": null,
+    "url": "https://www.chemours.com",
+    "product_url": null,
+    "country": "US",
+    "region": "north_america",
+    "cas_numbers": [
+      "13463-67-7"
+    ],
+    "source_records": [
+      "titanium-dioxide__11__20260409",
+      "titanium-dioxide__5__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Chr. Hansen",
+    "existing_db_name": null,
+    "url": "https://www.chr-hansen.com",
+    "product_url": null,
+    "country": "DK",
+    "region": "europe",
+    "cas_numbers": [],
+    "source_records": [
+      "probiotic-cultures__12__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Coconut Secret",
+    "existing_db_name": null,
+    "url": "https://www.coconutsecret.com",
+    "product_url": null,
+    "country": "US",
+    "region": "north_america",
+    "cas_numbers": [],
+    "source_records": [
+      "coconut-water-powder__2__20260409"
+    ]
+  },
+  {
+    "canonical_name": "CSPC Pharmaceutical",
+    "existing_db_name": null,
+    "url": "https://www.cspc.com.cn",
+    "product_url": null,
+    "country": "CN",
+    "region": "asia",
+    "cas_numbers": [
+      "50-81-7"
+    ],
+    "source_records": [
+      "vitamin-c__27__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Daiichi Sankyo",
+    "existing_db_name": null,
+    "url": "https://www.daiichisankyo.com",
+    "product_url": null,
+    "country": "JP",
+    "region": "asia",
+    "cas_numbers": [
+      "137-08-6"
+    ],
+    "source_records": [
+      "pantothenic-acid__27__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Dead Sea Bromine (ICL)",
+    "existing_db_name": null,
+    "url": "https://www.icl-group.com",
+    "product_url": null,
+    "country": "IL",
+    "region": "other",
+    "cas_numbers": [
+      "1309-48-4"
+    ],
+    "source_records": [
+      "magnesium-oxide__19__20260409"
+    ]
+  },
+  {
+    "canonical_name": "DFE Pharma",
+    "existing_db_name": null,
+    "url": "https://www.dfepharma.com",
+    "product_url": "https://estore.dfepharma.com/collections/mcc",
+    "country": "DE",
+    "region": "europe",
+    "cas_numbers": [
+      "9004-34-6"
+    ],
+    "source_records": [
+      "cellulose__11__20260409",
+      "cellulose__5__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Dow Chemical (CARBOWAX SENTRY)",
+    "existing_db_name": null,
+    "url": "https://www.dow.com",
+    "product_url": "https://pharma.basf.com/chemistry/polyethylene-glycols",
+    "country": "US",
+    "region": "north_america",
+    "cas_numbers": [
+      "25322-68-3"
+    ],
+    "source_records": [
+      "polyethylene-glycol__33__20260409",
+      "polyethylene-glycol__38__20260409"
+    ]
+  },
+  {
+    "canonical_name": "DSM-Firmenich",
+    "existing_db_name": null,
+    "url": "https://www.dsm-firmenich.com",
+    "product_url": "https://www.dsm-firmenich.com/en/products/vitamins/vitamin-d.html",
+    "country": "NL",
+    "region": "europe",
+    "cas_numbers": [
+      "67-97-0",
+      "502-65-8",
+      "532-43-4",
+      "1406-66-2",
+      "127-47-9",
+      "50-81-7",
+      "7695-91-2"
+    ],
+    "source_records": [
+      "b-vitamins__27__20260409",
+      "cholecalciferol-vitamin-d3__27__20260409",
+      "lycopene__4__20260409",
+      "thiamine__27__20260409",
+      "tocopherols__27__20260409",
+      "vitamin-a__27__20260409",
+      "vitamin-c__27__20260409",
+      "vitamin-d3-cholecalciferol__27__20260409",
+      "vitamin-d3-cholecalciferol__28__20260409",
+      "vitamin-d__27__20260409",
+      "vitamin-e__27__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Elementis (Mondo Minerals)",
+    "existing_db_name": null,
+    "url": "https://www.elementis.com",
+    "product_url": null,
+    "country": "GB",
+    "region": "europe",
+    "cas_numbers": [
+      "14807-96-6"
+    ],
+    "source_records": [
+      "talc__5__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Evonik (Aerosil)",
+    "existing_db_name": null,
+    "url": "https://www.evonik.com",
+    "product_url": null,
+    "country": "DE",
+    "region": "europe",
+    "cas_numbers": [
+      "7631-86-9"
+    ],
+    "source_records": [
+      "silica__5__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Faci (Baerlocher Group)",
+    "existing_db_name": null,
+    "url": "https://www.faci.it",
+    "product_url": null,
+    "country": "IT",
+    "region": "europe",
+    "cas_numbers": [
+      "557-04-0"
+    ],
+    "source_records": [
+      "vegetable-magnesium-stearate__5__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Franklin Baker",
+    "existing_db_name": null,
+    "url": "https://www.franklinbaker.com",
+    "product_url": null,
+    "country": "PH",
+    "region": "asia",
+    "cas_numbers": [],
+    "source_records": [
+      "coconut-water-powder__2__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Gelita",
+    "existing_db_name": null,
+    "url": "https://www.gelita.com",
+    "product_url": null,
+    "country": "DE",
+    "region": "europe",
+    "cas_numbers": [
+      "9000-70-8"
+    ],
+    "source_records": [
+      "gelatin__9__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Givaudan",
+    "existing_db_name": null,
+    "url": "https://www.givaudan.com",
+    "product_url": null,
+    "country": "CH",
+    "region": "europe",
+    "cas_numbers": [],
+    "source_records": [
+      "natural-lemon-lime-flavor__15__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Global Calcium Pvt Ltd",
+    "existing_db_name": null,
+    "url": "https://www.globalcalcium.com",
+    "product_url": "https://www.globalcalcium.com/products/calcium-citrate-usp",
+    "country": "IN",
+    "region": "asia",
+    "cas_numbers": [
+      "5785-44-4"
+    ],
+    "source_records": [
+      "calcium-citrate__19__20260409",
+      "calcium-citrate__28__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Guilin Saraya",
+    "existing_db_name": null,
+    "url": "https://www.guilinsaraya.com",
+    "product_url": null,
+    "country": "CN",
+    "region": "asia",
+    "cas_numbers": [
+      "88901-36-4"
+    ],
+    "source_records": [
+      "monk-fruit-extract__10__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Hebei Yuxing Bio-Engineering",
+    "existing_db_name": null,
+    "url": "https://www.yuxingbio.com",
+    "product_url": null,
+    "country": "CN",
+    "region": "asia",
+    "cas_numbers": [
+      "68-19-9"
+    ],
+    "source_records": [
+      "vitamin-b12__27__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Huazhong Pharma",
+    "existing_db_name": null,
+    "url": "https://www.huazhongpharma.com",
+    "product_url": null,
+    "country": "CN",
+    "region": "asia",
+    "cas_numbers": [
+      "58-56-0"
+    ],
+    "source_records": [
+      "vitamin-b6__27__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Hubei Guangji Pharmaceutical",
+    "existing_db_name": null,
+    "url": "https://www.hbguangji.com",
+    "product_url": null,
+    "country": "CN",
+    "region": "asia",
+    "cas_numbers": [
+      "83-88-5"
+    ],
+    "source_records": [
+      "riboflavin__27__20260409"
+    ]
+  },
+  {
+    "canonical_name": "IFF",
+    "existing_db_name": "IFF",
+    "url": "https://pharma.iff.com",
+    "product_url": "https://pharma.iff.com/industry-segments/pharma-solutions/products/ac-di-sol",
+    "country": "US",
+    "region": "north_america",
+    "cas_numbers": [
+      "74811-65-7"
+    ],
+    "source_records": [
+      "croscarmellose-sodium__11__20260409",
+      "croscarmellose-sodium__5__20260409",
+      "natural-lemon-lime-flavor__15__20260409",
+      "probiotic-cultures__12__20260409",
+      "bifidobacterium-lactis-bl-04__12__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Imerys",
+    "existing_db_name": null,
+    "url": "https://www.imerys.com",
+    "product_url": null,
+    "country": "FR",
+    "region": "europe",
+    "cas_numbers": [
+      "471-34-1",
+      "14807-96-6"
+    ],
+    "source_records": [
+      "calcium-carbonate__19__20260409",
+      "talc__5__20260409"
+    ]
+  },
+  {
+    "canonical_name": "IOI Oleochemicals",
+    "existing_db_name": null,
+    "url": "https://www.ioioleochemicals.com",
+    "product_url": null,
+    "country": "MY",
+    "region": "asia",
+    "cas_numbers": [
+      "57-11-4"
+    ],
+    "source_records": [
+      "stearic-acid__5__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Jubilant Pharmova",
+    "existing_db_name": null,
+    "url": "https://www.jubilantpharmova.com",
+    "product_url": null,
+    "country": "IN",
+    "region": "asia",
+    "cas_numbers": [
+      "98-92-0"
+    ],
+    "source_records": [
+      "niacinamide__27__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Jungbunzlauer",
+    "existing_db_name": null,
+    "url": "https://www.jungbunzlauer.com",
+    "product_url": null,
+    "country": "CH",
+    "region": "europe",
+    "cas_numbers": [
+      "77-92-9"
+    ],
+    "source_records": [
+      "citric-acid__27__20260409",
+      "citric-acid__38__20260409",
+      "non-gmo-citric-acid__18__20260409"
+    ]
+  },
+  {
+    "canonical_name": "KANEGRADE",
+    "existing_db_name": null,
+    "url": "https://www.kanegrade.com",
+    "product_url": null,
+    "country": "GB",
+    "region": "europe",
+    "cas_numbers": [],
+    "source_records": [
+      "beet-powder__4__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Kemin Industries (FloraGLO)",
+    "existing_db_name": null,
+    "url": "https://www.kemin.com",
+    "product_url": null,
+    "country": "US",
+    "region": "north_america",
+    "cas_numbers": [
+      "127-40-2"
+    ],
+    "source_records": [
+      "lutein__4__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Koa Corporation",
+    "existing_db_name": null,
+    "url": "https://www.koacorp.co.jp",
+    "product_url": null,
+    "country": "JP",
+    "region": "asia",
+    "cas_numbers": [
+      "84-80-0"
+    ],
+    "source_records": [
+      "vitamin-k__27__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Kuraray Co., Ltd.",
+    "existing_db_name": null,
+    "url": "https://www.kuraray.com",
+    "product_url": null,
+    "country": "JP",
+    "region": "asia",
+    "cas_numbers": [
+      "9002-89-5"
+    ],
+    "source_records": [
+      "polyvinyl-alcohol__11__20260409",
+      "polyvinyl-alcohol__5__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Kyowa Chemical Industry",
+    "existing_db_name": null,
+    "url": "https://www.kyowa-chem.co.jp",
+    "product_url": null,
+    "country": "JP",
+    "region": "asia",
+    "cas_numbers": [
+      "1309-48-4"
+    ],
+    "source_records": [
+      "magnesium__19__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Layn Natural Ingredients",
+    "existing_db_name": null,
+    "url": "https://www.layn.com",
+    "product_url": null,
+    "country": "CN",
+    "region": "asia",
+    "cas_numbers": [
+      "88901-36-4"
+    ],
+    "source_records": [
+      "monk-fruit-extract__10__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Lehmann & Voss",
+    "existing_db_name": null,
+    "url": "https://www.lehvoss.de",
+    "product_url": null,
+    "country": "DE",
+    "region": "europe",
+    "cas_numbers": [
+      "1309-48-4"
+    ],
+    "source_records": [
+      "magnesium__19__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Lionel Hitchen",
+    "existing_db_name": null,
+    "url": "https://www.lionelhitchen.com",
+    "product_url": null,
+    "country": "GB",
+    "region": "europe",
+    "cas_numbers": [],
+    "source_records": [
+      "lemon-juice-powder__2__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Lonza",
+    "existing_db_name": null,
+    "url": "https://www.lonza.com",
+    "product_url": null,
+    "country": "CH",
+    "region": "europe",
+    "cas_numbers": [
+      "58-85-5",
+      "9000-70-8",
+      "98-92-0"
+    ],
+    "source_records": [
+      "biotin__27__20260409",
+      "gelatin-capsule-bovine__13__20260409",
+      "gelatin-capsule-bovine__9__20260409",
+      "niacinamide__27__20260409"
+    ]
+  },
+  {
+    "canonical_name": "LycoRed",
+    "existing_db_name": null,
+    "url": "https://www.lycored.com",
+    "product_url": null,
+    "country": "IL",
+    "region": "other",
+    "cas_numbers": [
+      "502-65-8"
+    ],
+    "source_records": [
+      "lycopene__4__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Marigot Ltd",
+    "existing_db_name": null,
+    "url": "https://www.aquamin.com",
+    "product_url": null,
+    "country": "IE",
+    "region": "europe",
+    "cas_numbers": [],
+    "source_records": [
+      "aquamin-mg-soluble__34__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Merck KGaA (Metafolin)",
+    "existing_db_name": null,
+    "url": "https://www.merckgroup.com",
+    "product_url": null,
+    "country": "DE",
+    "region": "europe",
+    "cas_numbers": [
+      "59-30-3"
+    ],
+    "source_records": [
+      "folate__27__20260409"
+    ]
+  },
+  {
+    "canonical_name": "NOF Corporation",
+    "existing_db_name": null,
+    "url": "https://www.nof.co.jp",
+    "product_url": null,
+    "country": "JP",
+    "region": "asia",
+    "cas_numbers": [
+      "557-04-0"
+    ],
+    "source_records": [
+      "magnesium-stearate__5__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Nutrilo",
+    "existing_db_name": null,
+    "url": "https://www.nutrilo.de",
+    "product_url": null,
+    "country": "DE",
+    "region": "europe",
+    "cas_numbers": [
+      "68-19-9"
+    ],
+    "source_records": [
+      "vitamin-b12__27__20260409"
+    ]
+  },
+  {
+    "canonical_name": "OmniActive Health Technologies (Lutemax)",
+    "existing_db_name": null,
+    "url": "https://www.omniactives.com",
+    "product_url": null,
+    "country": "IN",
+    "region": "asia",
+    "cas_numbers": [
+      "127-40-2"
+    ],
+    "source_records": [
+      "lutein__4__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Omya",
+    "existing_db_name": null,
+    "url": "https://www.omya.com",
+    "product_url": null,
+    "country": "CH",
+    "region": "europe",
+    "cas_numbers": [
+      "471-34-1"
+    ],
+    "source_records": [
+      "calcium-carbonate__19__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Panvo Organics Pvt Ltd",
+    "existing_db_name": null,
+    "url": "https://www.panvoorganics.com",
+    "product_url": null,
+    "country": "IN",
+    "region": "asia",
+    "cas_numbers": [
+      "5785-44-4"
+    ],
+    "source_records": [
+      "calcium-citrate__19__20260409",
+      "calcium-citrate__28__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Peter Cremer North America",
+    "existing_db_name": null,
+    "url": "https://www.petercremer.com",
+    "product_url": null,
+    "country": "US",
+    "region": "north_america",
+    "cas_numbers": [
+      "557-04-0",
+      "57-11-4"
+    ],
+    "source_records": [
+      "magnesium-stearate__11__20260409",
+      "magnesium-stearate__5__20260409",
+      "stearic-acid__11__20260409",
+      "stearic-acid__5__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Peter Greven",
+    "existing_db_name": null,
+    "url": "https://www.peter-greven.com",
+    "product_url": null,
+    "country": "DE",
+    "region": "europe",
+    "cas_numbers": [
+      "557-04-0"
+    ],
+    "source_records": [
+      "vegetable-magnesium-stearate__5__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Roquette",
+    "existing_db_name": null,
+    "url": "https://www.roquette.com",
+    "product_url": "https://www.roquette.com/pharma-and-nutraceuticals-microcrystalline-cellulose",
+    "country": "FR",
+    "region": "europe",
+    "cas_numbers": [
+      "9004-34-6",
+      "9050-36-6",
+      "50-99-7"
+    ],
+    "source_records": [
+      "cellulose__11__20260409",
+      "cellulose__5__20260409",
+      "maltodextrin__18__20260409",
+      "anhydrous-dextrose__18__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Sabinsa Corporation",
+    "existing_db_name": null,
+    "url": "https://www.sabinsa.com/products/bioperine",
+    "product_url": null,
+    "country": null,
+    "region": null,
+    "cas_numbers": [
+      "84929-41-9"
+    ],
+    "source_records": [
+      "black-pepper-concentrate__4__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Sekisui Chemical",
+    "existing_db_name": null,
+    "url": "https://www.sekisui.co.jp",
+    "product_url": null,
+    "country": "JP",
+    "region": "asia",
+    "cas_numbers": [
+      "9002-89-5"
+    ],
+    "source_records": [
+      "polyvinyl-alcohol__5__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Sigma-Aldrich / Merck",
+    "existing_db_name": null,
+    "url": "https://www.sigmaaldrich.com",
+    "product_url": null,
+    "country": "DE",
+    "region": "europe",
+    "cas_numbers": [
+      "13410-01-0"
+    ],
+    "source_records": [
+      "selenium__19__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Spectrum Chemical",
+    "existing_db_name": "Spectrum Chemical",
+    "url": "https://www.spectrumchemical.com",
+    "product_url": null,
+    "country": "US",
+    "region": "north_america",
+    "cas_numbers": [
+      "10102-40-6"
+    ],
+    "source_records": [
+      "molybdenum__19__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Sulfozyme Agro India",
+    "existing_db_name": null,
+    "url": "https://www.sulfozyme.com",
+    "product_url": null,
+    "country": "IN",
+    "region": "asia",
+    "cas_numbers": [
+      "10034-96-5"
+    ],
+    "source_records": [
+      "manganese__19__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Sun Chemical",
+    "existing_db_name": null,
+    "url": "https://www.sunchemical.com",
+    "product_url": null,
+    "country": "US",
+    "region": "north_america",
+    "cas_numbers": [
+      "68921-42-6"
+    ],
+    "source_records": [
+      "blue-2-lake__15__20260409"
+    ]
+  },
+  {
+    "canonical_name": "TIC Gums (Kerry)",
+    "existing_db_name": null,
+    "url": "https://www.kerry.com",
+    "product_url": null,
+    "country": "US",
+    "region": "north_america",
+    "cas_numbers": [
+      "9000-01-5"
+    ],
+    "source_records": [
+      "acacia-gum__18__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Tronox",
+    "existing_db_name": null,
+    "url": "https://www.tronox.com",
+    "product_url": null,
+    "country": "US",
+    "region": "north_america",
+    "cas_numbers": [
+      "13463-67-7"
+    ],
+    "source_records": [
+      "titanium-dioxide__5__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Tyger Scientific (TygerMag)",
+    "existing_db_name": null,
+    "url": "https://tygersci.com",
+    "product_url": "https://tygersci.com/product/magnesium-silicate-cas-1343-88-0/",
+    "country": "US",
+    "region": "north_america",
+    "cas_numbers": [
+      "1343-88-0"
+    ],
+    "source_records": [
+      "magnesium-silicate__11__20260409",
+      "magnesium-silicate__5__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Univar Solutions",
+    "existing_db_name": "Univar Solutions",
+    "url": "https://www.univarsolutions.com",
+    "product_url": null,
+    "country": "US",
+    "region": "north_america",
+    "cas_numbers": [
+      "7758-99-8"
+    ],
+    "source_records": [
+      "copper-sulfate__19__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Vegetology (Vitashine)",
+    "existing_db_name": null,
+    "url": "https://www.vegetology.com",
+    "product_url": "https://www.vegetology.com/vitashine",
+    "country": "GB",
+    "region": "europe",
+    "cas_numbers": [
+      "67-97-0"
+    ],
+    "source_records": [
+      "vitamin-d3-cholecalciferol__27__20260409"
+    ]
+  },
+  {
+    "canonical_name": "Zhejiang NHU",
+    "existing_db_name": null,
+    "url": "https://www.zj-nhu.com",
+    "product_url": null,
+    "country": "CN",
+    "region": "asia",
+    "cas_numbers": [
+      "127-47-9"
+    ],
+    "source_records": [
+      "vitamin-a__27__20260409"
+    ]
+  }
+]
