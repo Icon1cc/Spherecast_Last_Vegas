@@ -12,11 +12,13 @@ const Header = () => {
     <header className="fixed top-0 left-0 right-0 z-50 h-16 bg-header flex items-center px-6">
       <div className="flex items-center justify-between w-full max-w-7xl mx-auto">
         <Link to="/" className="flex items-center gap-3 group">
-          <img
-            src="/logo.jpeg"
-            alt="SupplyWise AI logo"
-            className="w-9 h-9 rounded-full object-cover ring-1 ring-header-foreground/20 group-hover:ring-header-foreground/40 transition-colors"
-          />
+          <div className="w-10 h-10 rounded-full bg-white overflow-hidden ring-1 ring-header-foreground/20 group-hover:ring-header-foreground/40 transition-colors">
+            <img
+              src="/logo.jpeg"
+              alt="SupplyWise AI logo"
+              className="w-full h-full object-contain scale-[2.4]"
+            />
+          </div>
           <span className="text-header-foreground font-bold text-lg tracking-tight">
             SupplyWise AI
           </span>
