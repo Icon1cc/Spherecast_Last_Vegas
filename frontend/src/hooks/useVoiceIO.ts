@@ -1,5 +1,5 @@
 /**
- * useVoiceIO - Reusable voice input/output hook for Jarvis
+ * useVoiceIO - Reusable voice input/output hook for Agnes
  * Extracted and adapted from ChatPanel.tsx for demo mode
  */
 
@@ -159,7 +159,7 @@ export function useVoiceIO(options: UseVoiceIOOptions = {}): UseVoiceIOReturn {
    */
   const transcribeAudio = useCallback(async (audioBlob: Blob): Promise<string> => {
     const formData = new FormData();
-    formData.append("file", audioBlob, "jarvis-demo.webm");
+    formData.append("file", audioBlob, "agnes-demo.webm");
     formData.append("model_id", ELEVENLABS_STT_MODEL_ID);
 
     const response = await fetch("/api/elevenlabs/stt", {

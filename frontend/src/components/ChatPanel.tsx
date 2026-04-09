@@ -9,8 +9,8 @@ interface ChatPanelProps {
   onClose: () => void;
 }
 
-const JARVIS_INITIALS = "JR";
-const JARVIS_GREETING = "Hello I am jarvis, how can I help you today";
+const AGNES_INITIALS = "AG";
+const AGNES_GREETING = "Hello I am Agnes, how can I help you today";
 const DEFAULT_ELEVENLABS_VOICE_ID = "s3TPKV1kjDlVtZbl4Ksh";
 const ELEVENLABS_VOICE_ID =
   import.meta.env.VITE_ELEVENLABS_VOICE_ID?.trim() ?? DEFAULT_ELEVENLABS_VOICE_ID;
@@ -35,17 +35,17 @@ const createMessage = (role: ChatMessage["role"], content: string): ChatMessage 
   timestamp: new Date(),
 });
 
-const createJarvisSession = (title: string): ChatSession => ({
+const createAgnesSession = (title: string): ChatSession => ({
   id: crypto.randomUUID(),
   title,
   date: new Date(),
-  messages: [createMessage("assistant", JARVIS_GREETING)],
+  messages: [createMessage("assistant", AGNES_GREETING)],
 });
 
 // Build chat history for API calls
 const buildChatHistory = (messages: ChatMessage[]): Array<{ role: "user" | "assistant"; content: string }> => {
   return messages
-    .filter((msg) => msg.content !== JARVIS_GREETING)
+    .filter((msg) => msg.content !== AGNES_GREETING)
     .map((msg) => ({
       role: msg.role as "user" | "assistant",
       content: msg.content,
@@ -220,7 +220,7 @@ const MessageContent = ({ content }: { content: string }) => {
 };
 
 const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
-  const initialSessionRef = useRef<ChatSession>(createJarvisSession("Jarvis Session"));
+  const initialSessionRef = useRef<ChatSession>(createAgnesSession("Agnes Session"));
   const [sessions, setSessions] = useState<ChatSession[]>([initialSessionRef.current]);
   const [activeSessionId, setActiveSessionId] = useState(initialSessionRef.current.id);
   const [input, setInput] = useState("");
@@ -386,7 +386,7 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
 
   const transcribeAudio = useCallback(async (audioBlob: Blob): Promise<string> => {
     const formData = new FormData();
-    formData.append("file", audioBlob, "jarvis-user-journey.webm");
+    formData.append("file", audioBlob, "agnes-user-journey.webm");
     formData.append("model_id", ELEVENLABS_STT_MODEL_ID);
 
     const response = await fetch("/api/elevenlabs/stt", {
@@ -648,13 +648,13 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
     if (!open || !activeSession) return;
 
     const hasGreeting = activeSession.messages.some(
-      (msg) => msg.role === "assistant" && msg.content === JARVIS_GREETING
+      (msg) => msg.role === "assistant" && msg.content === AGNES_GREETING
     );
 
     if (!hasGreeting) {
-      appendMessagesToSession(activeSession.id, [createMessage("assistant", JARVIS_GREETING)]);
+      appendMessagesToSession(activeSession.id, [createMessage("assistant", AGNES_GREETING)]);
     }
-    // Voice greeting removed - Jarvis only speaks after mic interaction
+    // Voice greeting removed - Agnes only speaks after mic interaction
   }, [open, activeSession, appendMessagesToSession]);
 
   useEffect(() => {
@@ -690,7 +690,7 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
   }, [input, activeSession, processUserMessage, activeSessionId]);
 
   const createNewChat = useCallback(() => {
-    const newSession = createJarvisSession("New Chat");
+    const newSession = createAgnesSession("New Chat");
     setSessions((prev) => [newSession, ...prev]);
     setActiveSessionId(newSession.id);
   }, []);
@@ -711,7 +711,7 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
     // Speak greeting on first mic click for this session
     if (activeSessionId && !greetedSessionsRef.current.has(activeSessionId)) {
       greetedSessionsRef.current.add(activeSessionId);
-      await speakText(JARVIS_GREETING);
+      await speakText(AGNES_GREETING);
     }
 
     void startListening();
@@ -742,9 +742,9 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
         <header className="h-14 bg-header flex items-center justify-between px-4 shrink-0">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center ring-1 ring-header-foreground/30 text-xs font-bold">
-              {JARVIS_INITIALS}
+              {AGNES_INITIALS}
             </div>
-            <span className="text-header-foreground font-semibold text-sm">Jarvis Assistant</span>
+            <span className="text-header-foreground font-semibold text-sm">Agnes Assistant</span>
           </div>
           <button
             onClick={onClose}
@@ -799,7 +799,7 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
                   >
                     {msg.role === "assistant" && (
                       <div className="w-6 h-6 rounded-full bg-black text-white flex items-center justify-center shrink-0 mt-0.5 ring-1 ring-border text-[10px] font-bold">
-                        {JARVIS_INITIALS}
+                        {AGNES_INITIALS}
                       </div>
                     )}
                     <div>
@@ -846,8 +846,8 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
                     ? "bg-primary/10 text-primary hover:bg-primary/15"
                     : "bg-muted text-muted-foreground hover:bg-muted/80"
                 }`}
-                aria-label={isSpeakerEnabled ? "Disable Jarvis voice" : "Enable Jarvis voice"}
-                title={isSpeakerEnabled ? "Jarvis voice enabled" : "Jarvis voice disabled"}
+                aria-label={isSpeakerEnabled ? "Disable Agnes voice" : "Enable Agnes voice"}
+                title={isSpeakerEnabled ? "Agnes voice enabled" : "Agnes voice disabled"}
               >
                 {isSpeakerEnabled ? (
                   <Volume2 className="w-4 h-4" />
@@ -881,7 +881,7 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Ask Jarvis anything..."
+                placeholder="Ask Agnes anything..."
                 className="flex-1 px-3 py-2 text-sm bg-muted rounded-md border-0 outline-none focus:ring-2 focus:ring-primary/30"
                 aria-label="Message input"
               />

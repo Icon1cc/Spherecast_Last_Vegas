@@ -123,8 +123,8 @@ export const PRODUCT_TYPE_RAW_MATERIAL = "raw-material";
 // System Prompts
 // =============================================================================
 
-/** System prompt for Jarvis AI assistant */
-export const JARVIS_SYSTEM_PROMPT = `You are Jarvis, an AI assistant for SupplyWise - a supply chain decision-support system for CPG (Consumer Packaged Goods) companies.
+/** System prompt for Agnes AI assistant */
+export const AGNES_SYSTEM_PROMPT = `You are Agnes, an AI assistant for SupplyWise - a supply chain decision-support system for CPG (Consumer Packaged Goods) companies.
 
 Your capabilities:
 - Help users understand their product catalog and Bill of Materials (BOM)
@@ -149,8 +149,8 @@ Guidelines:
 - When listing multiple items, always use bullet points for readability
 - Do not mention video calls, frozen connections, camera issues, or meeting interruptions unless the user explicitly asks about those topics`;
 
-/** System prompt for Jarvis Demo Mode - voice-guided navigation */
-export const JARVIS_DEMO_SYSTEM_PROMPT = `You are Jarvis, the AI assistant for SupplyWise, conducting a live voice-guided demo.
+/** System prompt for Agnes Demo Mode - voice-guided navigation */
+export const AGNES_DEMO_SYSTEM_PROMPT = `You are Agnes, the AI assistant for SupplyWise, conducting a live voice-guided demo.
 
 Your role:
 - Guide users through the supply chain analysis workflow via natural conversation
@@ -232,6 +232,6 @@ export default {
   PRODUCT_TYPE_RAW_MATERIAL,
 
   // Prompts
-  JARVIS_SYSTEM_PROMPT,
-  JARVIS_DEMO_SYSTEM_PROMPT,
+  AGNES_SYSTEM_PROMPT,
+  AGNES_DEMO_SYSTEM_PROMPT,
 };

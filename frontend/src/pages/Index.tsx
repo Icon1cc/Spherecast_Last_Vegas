@@ -5,7 +5,7 @@ import Layout from "@/components/Layout";
 import ChatIcon from "@/components/ChatIcon";
 import ChatPanel from "@/components/ChatPanel";
 import RawMaterialsModal from "@/components/RawMaterialsModal";
-import JarvisDemoOverlay from "@/components/demo/JarvisDemoOverlay";
+import AgnesDemoOverlay from "@/components/demo/AgnesDemoOverlay";
 import { getProducts, getProductBom, type Product, type BomComponent } from "@/lib/api";
 
 const ITEMS_PER_PAGE = 10;
@@ -90,7 +90,7 @@ const Dashboard = () => {
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold tracking-tight">Product Dashboard</h1>
           <div className="flex items-center gap-4">
-            {/* Jarvis Demo Button */}
+            {/* Agnes Demo Button */}
             <button
               onClick={handleOpenDemo}
               className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-gray-800 to-gray-900 text-white text-sm font-medium rounded-lg shadow-lg hover:shadow-xl hover:from-gray-700 hover:to-gray-800 transition-all duration-200 hover-lift group"
@@ -244,8 +244,8 @@ const Dashboard = () => {
       <ChatIcon onClick={handleOpenChat} visible={showChatIcon} />
       <ChatPanel open={chatOpen} onClose={handleCloseChat} />
 
-      {/* Jarvis Demo Overlay */}
-      <JarvisDemoOverlay isOpen={demoOpen} onClose={handleCloseDemo} />
+      {/* Agnes Demo Overlay */}
+      <AgnesDemoOverlay isOpen={demoOpen} onClose={handleCloseDemo} />
     </Layout>
   );
 };

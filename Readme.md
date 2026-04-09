@@ -60,7 +60,7 @@ Three tiers of substitution candidates per ingredient:
   - Supply risk assessment
   - Cost impact
 
-### Voice-Enabled Chat (Jarvis)
+### Voice-Enabled Chat (Agnes)
 - Two-way voice conversation using ElevenLabs
 - Speech-to-Text (STT) with scribe_v1 model
 - Text-to-Speech (TTS) with multilingual v2
@@ -115,7 +115,7 @@ ingredient_profile (281) ── keyed by CAS number
 │   │   ├── index.js                # List finished goods
 │   │   └── bom.js                  # Get BOM components
 │   ├── chat/
-│   │   └── message.js              # Jarvis AI chat
+│   │   └── message.js              # Agnes AI chat
 │   └── elevenlabs/
 │       ├── tts.js                  # Text-to-speech
 │       └── stt.js                  # Speech-to-text
@@ -163,7 +163,7 @@ ingredient_profile (281) ── keyed by CAS number
 | GET | `/api/products/bom?id=:id` | Get BOM components |
 | POST | `/api/analysis/component` | Supplier analysis (enrichment-aware) |
 | GET | `/api/substitution/:componentId` | 3-tier substitution candidates + AI trace |
-| POST | `/api/chat/message` | Jarvis AI assistant |
+| POST | `/api/chat/message` | Agnes AI assistant |
 | POST | `/api/elevenlabs/tts` | Text-to-speech |
 | POST | `/api/elevenlabs/stt` | Speech-to-text |
 

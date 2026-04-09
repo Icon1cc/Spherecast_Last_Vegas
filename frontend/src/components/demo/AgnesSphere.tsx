@@ -1,12 +1,12 @@
 /**
- * JarvisSphere - Animated metallic sphere for Jarvis Demo Mode
+ * AgnesSphere - Animated metallic sphere for Agnes Demo Mode
  * Pure CSS 3D-looking sphere with state-based animations
  */
 
 import { memo } from "react";
 import type { DemoPhase } from "@/types/demo";
 
-interface JarvisSphereProps {
+interface AgnesSphereProps {
   phase: DemoPhase;
   size?: "sm" | "md" | "lg";
 }
@@ -75,7 +75,7 @@ function getGlowStyle(phase: DemoPhase): React.CSSProperties {
   }
 }
 
-const JarvisSphere = memo(function JarvisSphere({ phase, size = "lg" }: JarvisSphereProps) {
+const AgnesSphere = memo(function AgnesSphere({ phase, size = "lg" }: AgnesSphereProps) {
   const animationClass = getAnimationClass(phase);
   const glowStyle = getGlowStyle(phase);
 
@@ -222,4 +222,4 @@ const JarvisSphere = memo(function JarvisSphere({ phase, size = "lg" }: JarvisSp
   );
 });
 
-export default JarvisSphere;
+export default AgnesSphere;

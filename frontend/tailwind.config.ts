@@ -107,7 +107,7 @@ export default {
           "0%": { transform: "scale(1)", opacity: "1" },
           "100%": { transform: "scale(1.5)", opacity: "0" },
         },
-        // Jarvis Demo Animations
+        // Agnes Demo Animations
         "sphere-float": {
           "0%, 100%": { transform: "translateY(0)" },
           "50%": { transform: "translateY(-12px)" },
@@ -158,7 +158,7 @@ export default {
         "slide-out-right": "slide-out-right 0.3s ease-out",
         "scale-in": "scale-in 0.2s ease-out",
         "pulse-ring": "pulse-ring 1.5s ease-out infinite",
-        // Jarvis Demo Animations
+        // Agnes Demo Animations
         "sphere-float": "sphere-float 3s ease-in-out infinite",
         "sphere-breathe": "sphere-breathe 1.5s ease-in-out infinite",
         "sphere-pulse-speak": "sphere-pulse-speak 0.8s ease-in-out infinite",

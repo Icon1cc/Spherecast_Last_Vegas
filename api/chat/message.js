@@ -4,8 +4,8 @@ import {
   GEMINI_DEFAULT_MODEL,
   GEMINI_MAX_OUTPUT_TOKENS,
   GEMINI_TEMPERATURE,
-  JARVIS_DEMO_SYSTEM_PROMPT,
-  JARVIS_SYSTEM_PROMPT,
+  AGNES_DEMO_SYSTEM_PROMPT,
+  AGNES_SYSTEM_PROMPT,
 } from "../lib/constants.js";
 import { validateNonEmptyString } from "../lib/validation.js";
 
@@ -152,7 +152,7 @@ export default async function handler(req, res) {
     }
 
     // Build context-aware prompt
-    let contextPrompt = demoMode ? JARVIS_DEMO_SYSTEM_PROMPT : JARVIS_SYSTEM_PROMPT;
+    let contextPrompt = demoMode ? AGNES_DEMO_SYSTEM_PROMPT : AGNES_SYSTEM_PROMPT;
     if (!demoMode && dbContext) {
       contextPrompt += `\n\nDatabase context: ${dbContext.productCount} products, ${dbContext.supplierCount} suppliers, ${dbContext.companyCount} companies.`;
     }
@@ -238,7 +238,7 @@ Provide a helpful, accurate response. If you used search results, mention the so
           parts: [{
             text: demoMode
               ? "Ready to guide you through SupplyWise. What would you like to explore?"
-              : "Understood. I'm Jarvis, ready to help with supply chain decisions. How can I assist you?",
+              : "Understood. I'm Agnes, ready to help with supply chain decisions. How can I assist you?",
           }],
         },
         ...history.map((msg) => ({

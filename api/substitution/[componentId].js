@@ -94,11 +94,12 @@ export async function substitutionHandler(req, res) {
         JOIN supplier s ON s.id = sp.supplier_id
         WHERE cn.cas_number = $1
           AND s.id != $2
-        ORDER BY sp.price_per_unit ASC NULLS LAST, s.name
-        LIMIT 10
+        LIMIT 20
       `;
       const t1Result = await pool.query(t1Query, [base.cas_number, base.current_supplier_id ?? 0]);
-      tier1 = t1Result.rows;
+
+      // Score and sort Tier 1 based on weights
+      tier1 = scoreTier1Candidates(t1Result.rows, base, weights);
     }
 
     // --- Tier 2: same functional_role, compliance-compatible, different CAS ---
@@ -110,12 +111,17 @@ export async function substitutionHandler(req, res) {
           ip.canonical_name,
           ip.vegan_status,
           ip.halal_status,
+          ip.kosher_status,
+          ip.non_gmo_status,
+          ip.organic_status,
           ip.market_ban_eu,
           ip.market_ban_us,
           ip.patent_lock,
+          ip.single_manufacturer,
           s.id AS supplier_id,
           s.name AS supplier_name,
           sp.country,
+          sp.region,
           sp.price_per_unit,
           sp.certifications
         FROM ingredient_profile ip
@@ -125,22 +131,15 @@ export async function substitutionHandler(req, res) {
         WHERE ip.functional_role = $1
           AND ip.cas_number != $2
           AND ip.patent_lock != 'yes'
-          AND (ip.market_ban_eu = $3 OR ip.market_ban_eu IS NULL OR $3 IS NULL)
-          AND (
-            $4::text IS NULL OR $4::text = 'unknown'
-            OR ip.vegan_status = $4::text
-            OR ip.vegan_status = 'unknown'
-          )
-        ORDER BY sp.price_per_unit ASC NULLS LAST, ip.canonical_name
-        LIMIT 8
+        LIMIT 20
       `;
       const t2Result = await pool.query(t2Query, [
         base.functional_role,
         base.cas_number,
-        base.market_ban_eu ?? null,
-        base.vegan_status ?? null,
       ]);
-      tier2 = t2Result.rows;
+
+      // Score and sort Tier 2 based on weights
+      tier2 = scoreTier2Candidates(t2Result.rows, base, weights);
     }
 
     // --- Tier 3: Gemini AI reasoning trace ---
@@ -150,19 +149,19 @@ export async function substitutionHandler(req, res) {
     // Collect all refs from tier1 for sources
     const allRefs = tier1.flatMap(r => r.refs ?? []).filter(ref => ref && ref.url);
 
-    if (geminiKey) {
+    if (geminiKey && (tier1.length > 0 || tier2.length > 0)) {
       const t1Summary = tier1.length > 0
         ? tier1.slice(0, 5).map(r => {
             const price = r.price_per_unit ? `$${r.price_per_unit}/${r.price_unit || 'unit'}` : "price unknown";
             const certs = r.certifications ? Object.entries(r.certifications).map(([k,v]) => `${k}:${v}`).join(", ") : "no certs";
-            return `- ${r.supplier_name} (${r.country ?? "unknown"}): ${price}, certifications: ${certs}`;
+            return `- ${r.supplier_name} (${r.country ?? "unknown"}): ${price}, certifications: ${certs}, SCORE: ${Math.round(r.score * 100)}%`;
           }).join("\n")
         : "None found in database";
 
       const t2Summary = tier2.length > 0
         ? tier2.slice(0, 5).map(r => {
             const price = r.price_per_unit ? `$${r.price_per_unit}/unit` : "price unknown";
-            return `- ${r.canonical_name} (CAS: ${r.cas_number}) from ${r.supplier_name} (${r.country ?? "unknown"}): ${price}, vegan=${r.vegan_status}, EU=${r.market_ban_eu}, patent_lock=${r.patent_lock}`;
+            return `- ${r.canonical_name} (CAS: ${r.cas_number}) from ${r.supplier_name} (${r.country ?? "unknown"}): ${price}, vegan=${r.vegan_status}, EU=${r.market_ban_eu}, SCORE: ${Math.round(r.score * 100)}%`;
           }).join("\n")
         : "None found in database";
 
@@ -197,13 +196,10 @@ ${t1Summary}
 TIER 2 ALTERNATIVES (same function, different molecule - requires reformulation):
 ${t2Summary}
 
-Based on the data above and user priorities, recommend the single best substitution option.
+The candidates above have been PRE-SCORED based on user priorities. The SCORE indicates overall fit.
+Recommend the HIGHEST SCORING option that best matches user priorities.
 
-IMPORTANT: Provide detailed reasoning (2-3 sentences each) that explains WHY this is the best choice, citing specific data points. Consider:
-- Price comparison vs current supplier
-- Geographic diversification benefits
-- Certification and compliance advantages
-- Risk factors (single-source, patent, regulatory)
+IMPORTANT: Provide detailed reasoning (2-3 sentences each) that explains WHY this is the best choice, citing specific data points.
 
 Respond ONLY with valid JSON (no markdown fences):
 {
@@ -262,7 +258,7 @@ Respond ONLY with valid JSON (no markdown fences):
         ? {
             recommendation: tier1[0] ? tier1[0].supplier_name : tier2[0].canonical_name,
             tier: tier1[0] ? 1 : 2,
-            confidence: 0.6,
+            confidence: best.score ?? 0.6,
             reasoning: {
               functional_equivalence: `This ${tier1[0] ? "supplier offers the identical molecule (same CAS number)" : "ingredient serves the same functional role"} as your current ingredient, ensuring compatibility with your existing formulation. ${base.functional_role ? `Both serve as ${base.functional_role} in the product.` : ""} No reformulation or stability testing should be required for this substitution.`,
               compliance_fit: `Regulatory status shows EU market: ${base.market_ban_eu ?? "unknown"}, US market: ${base.market_ban_us ?? "unknown"}. Certification profile: vegan=${base.vegan_status ?? "unknown"}, halal=${base.halal_status ?? "unknown"}, kosher=${base.kosher_status ?? "unknown"}. This matches your current ingredient's compliance requirements.`,
@@ -301,8 +297,8 @@ Respond ONLY with valid JSON (no markdown fences):
         label_form_claim: base.label_form_claim,
         health_claim_form: base.health_claim_form,
       },
-      tier1,
-      tier2,
+      tier1: tier1.slice(0, 10),
+      tier2: tier2.slice(0, 8),
       aiRecommendation,
       weights,
     });
@@ -311,6 +307,200 @@ Respond ONLY with valid JSON (no markdown fences):
   } finally {
     if (pool) await pool.end();
   }
+}
+
+/**
+ * Score Tier 1 candidates based on user weights
+ * Tier 1 = same molecule, so functionalFit is always 100%
+ */
+function scoreTier1Candidates(candidates, base, weights) {
+  const totalWeight = weights.price + weights.regulatory + weights.certFit + weights.supplyRisk + weights.functionalFit;
+
+  // Find min/max prices for normalization
+  const prices = candidates.filter(c => c.price_per_unit != null).map(c => c.price_per_unit);
+  const minPrice = prices.length > 0 ? Math.min(...prices) : 0;
+  const maxPrice = prices.length > 0 ? Math.max(...prices) : 1;
+  const priceRange = maxPrice - minPrice || 1;
+
+  const scored = candidates.map(candidate => {
+    let score = 0;
+
+    // Price score (lower is better) - normalized 0-1
+    if (candidate.price_per_unit != null) {
+      const priceScore = 1 - ((candidate.price_per_unit - minPrice) / priceRange);
+      score += priceScore * (weights.price / totalWeight);
+    } else {
+      // No price info = neutral score
+      score += 0.5 * (weights.price / totalWeight);
+    }
+
+    // Regulatory score - based on country/region diversity
+    const regulatoryScore = calculateRegulatoryScore(candidate, base);
+    score += regulatoryScore * (weights.regulatory / totalWeight);
+
+    // Certification fit score
+    const certScore = calculateCertificationScore(candidate.certifications, base);
+    score += certScore * (weights.certFit / totalWeight);
+
+    // Supply risk score (geographic diversification)
+    const supplyRiskScore = calculateSupplyRiskScore(candidate, base);
+    score += supplyRiskScore * (weights.supplyRisk / totalWeight);
+
+    // Functional fit = 100% for Tier 1 (same CAS)
+    score += 1.0 * (weights.functionalFit / totalWeight);
+
+    return {
+      ...candidate,
+      score: Math.min(0.99, Math.max(0.1, score)),
+    };
+  });
+
+  // Sort by score descending
+  return scored.sort((a, b) => b.score - a.score);
+}
+
+/**
+ * Score Tier 2 candidates based on user weights
+ * Tier 2 = different molecule, same function
+ */
+function scoreTier2Candidates(candidates, base, weights) {
+  const totalWeight = weights.price + weights.regulatory + weights.certFit + weights.supplyRisk + weights.functionalFit;
+
+  // Find min/max prices for normalization
+  const prices = candidates.filter(c => c.price_per_unit != null).map(c => c.price_per_unit);
+  const minPrice = prices.length > 0 ? Math.min(...prices) : 0;
+  const maxPrice = prices.length > 0 ? Math.max(...prices) : 1;
+  const priceRange = maxPrice - minPrice || 1;
+
+  const scored = candidates.map(candidate => {
+    let score = 0;
+
+    // Price score (lower is better)
+    if (candidate.price_per_unit != null) {
+      const priceScore = 1 - ((candidate.price_per_unit - minPrice) / priceRange);
+      score += priceScore * (weights.price / totalWeight);
+    } else {
+      score += 0.5 * (weights.price / totalWeight);
+    }
+
+    // Regulatory score - check market bans match
+    let regulatoryScore = 0.5;
+    if (candidate.market_ban_eu === base.market_ban_eu || candidate.market_ban_eu === 'permitted') {
+      regulatoryScore += 0.25;
+    }
+    if (candidate.market_ban_us === base.market_ban_us || candidate.market_ban_us === 'permitted') {
+      regulatoryScore += 0.25;
+    }
+    score += regulatoryScore * (weights.regulatory / totalWeight);
+
+    // Certification fit score - check vegan/halal/kosher match
+    let certScore = 0;
+    const certChecks = [
+      { candidate: candidate.vegan_status, base: base.vegan_status },
+      { candidate: candidate.halal_status, base: base.halal_status },
+      { candidate: candidate.kosher_status, base: base.kosher_status },
+      { candidate: candidate.non_gmo_status, base: base.non_gmo_status },
+      { candidate: candidate.organic_status, base: base.organic_status },
+    ];
+    let matchCount = 0;
+    for (const check of certChecks) {
+      if (check.candidate === check.base ||
+          check.candidate === 'yes' || check.candidate === 'compliant' || check.candidate === 'certified' ||
+          check.base === 'unknown' || check.candidate === 'unknown') {
+        matchCount++;
+      }
+    }
+    certScore = matchCount / certChecks.length;
+    score += certScore * (weights.certFit / totalWeight);
+
+    // Supply risk score
+    let supplyRiskScore = 0.5;
+    if (candidate.patent_lock === 'no') supplyRiskScore += 0.2;
+    if (candidate.single_manufacturer === 'no') supplyRiskScore += 0.2;
+    if (candidate.country && candidate.country !== base.current_country) supplyRiskScore += 0.1;
+    score += Math.min(1, supplyRiskScore) * (weights.supplyRisk / totalWeight);
+
+    // Functional fit - same role but different molecule = 80% base
+    score += 0.8 * (weights.functionalFit / totalWeight);
+
+    return {
+      ...candidate,
+      score: Math.min(0.95, Math.max(0.1, score)), // Cap at 95% for tier 2
+    };
+  });
+
+  // Sort by score descending
+  return scored.sort((a, b) => b.score - a.score);
+}
+
+/**
+ * Calculate regulatory score for a supplier
+ */
+function calculateRegulatoryScore(candidate, base) {
+  let score = 0.5; // Base score
+
+  // Geographic diversity bonus
+  if (candidate.country) {
+    if (candidate.country !== base.current_country) {
+      score += 0.2; // Different country = diversification
+    }
+    // Premium regions
+    if (['US', 'DE', 'CH', 'JP', 'GB'].includes(candidate.country)) {
+      score += 0.15;
+    } else if (['CN', 'IN'].includes(candidate.country)) {
+      score += 0.05; // Common but higher risk
+    } else {
+      score += 0.1;
+    }
+  }
+
+  return Math.min(1, score);
+}
+
+/**
+ * Calculate certification score
+ */
+function calculateCertificationScore(certifications, base) {
+  if (!certifications || Object.keys(certifications).length === 0) {
+    return 0.3; // No certs = low score
+  }
+
+  let score = 0.5;
+  const certs = Object.keys(certifications).map(k => k.toLowerCase());
+
+  // Check for relevant certifications
+  if (certs.some(c => c.includes('iso'))) score += 0.15;
+  if (certs.some(c => c.includes('gmp') || c.includes('cgmp'))) score += 0.15;
+  if (certs.some(c => c.includes('halal'))) score += 0.1;
+  if (certs.some(c => c.includes('kosher'))) score += 0.1;
+  if (certs.some(c => c.includes('organic'))) score += 0.1;
+  if (certs.some(c => c.includes('vegan'))) score += 0.1;
+
+  return Math.min(1, score);
+}
+
+/**
+ * Calculate supply risk score
+ */
+function calculateSupplyRiskScore(candidate, base) {
+  let score = 0.5;
+
+  // Geographic diversification
+  if (candidate.country && candidate.country !== base.current_country) {
+    score += 0.2;
+  }
+
+  // Region diversification
+  if (candidate.region && candidate.region !== 'unknown') {
+    score += 0.1;
+  }
+
+  // Multiple regions available is better
+  if (candidate.region === 'europe' || candidate.region === 'north_america') {
+    score += 0.1; // Stable supply regions
+  }
+
+  return Math.min(1, score);
 }
 
 export default substitutionHandler;

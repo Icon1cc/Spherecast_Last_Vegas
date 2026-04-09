@@ -1,16 +1,16 @@
 /**
- * JarvisDemoOverlay - Full-screen overlay for Jarvis Demo Mode
+ * AgnesDemoOverlay - Full-screen overlay for Agnes Demo Mode
  * Displays animated sphere, transcript, and controls
  */
 
 import { memo, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { X, Mic, MicOff } from "lucide-react";
-import JarvisSphere from "./JarvisSphere";
-import { useJarvisDemo } from "@/hooks/useJarvisDemo";
+import AgnesSphere from "./AgnesSphere";
+import { useAgnesDemo } from "@/hooks/useAgnesDemo";
 import type { DemoPhase } from "@/types/demo";
 
-interface JarvisDemoOverlayProps {
+interface AgnesDemoOverlayProps {
   isOpen: boolean;
   onClose: () => void;
 }
@@ -43,20 +43,20 @@ function getStatusText(phase: DemoPhase): string {
 function getHintText(phase: DemoPhase): string | null {
   switch (phase) {
     case "LISTENING":
-      return "Speak naturally to Jarvis";
+      return "Speak naturally to Agnes";
     case "SPEAKING":
       return "Click mic or speak to interrupt";
     case "THINKING":
-      return "Jarvis is thinking...";
+      return "Agnes is thinking...";
     default:
       return null;
   }
 }
 
-const JarvisDemoOverlay = memo(function JarvisDemoOverlay({
+const AgnesDemoOverlay = memo(function AgnesDemoOverlay({
   isOpen,
   onClose,
-}: JarvisDemoOverlayProps) {
+}: AgnesDemoOverlayProps) {
   const {
     phase,
     transcript,
@@ -65,7 +65,7 @@ const JarvisDemoOverlay = memo(function JarvisDemoOverlay({
     startDemo,
     closeDemo,
     interrupt,
-  } = useJarvisDemo({
+  } = useAgnesDemo({
     onComplete: onClose,
     onError: (error) => console.error("Demo error:", error),
   });
@@ -132,7 +132,7 @@ const JarvisDemoOverlay = memo(function JarvisDemoOverlay({
         {/* Demo title */}
         <div className="absolute top-6 left-6">
           <h2 className="text-white/90 text-lg font-semibold tracking-wide">
-            Jarvis Demo
+            Agnes Demo
           </h2>
           <p className="text-white/50 text-sm mt-1">
             Voice-guided experience
@@ -141,7 +141,7 @@ const JarvisDemoOverlay = memo(function JarvisDemoOverlay({
 
         {/* Main sphere */}
         <div className="flex-shrink-0 mb-8">
-          <JarvisSphere phase={phase} size="lg" />
+          <AgnesSphere phase={phase} size="lg" />
         </div>
 
         {/* Status indicator */}
@@ -245,7 +245,7 @@ const JarvisDemoOverlay = memo(function JarvisDemoOverlay({
                     }`}
                   >
                     <span className="font-medium">
-                      {entry.role === "user" ? "You" : "Jarvis"}:
+                      {entry.role === "user" ? "You" : "Agnes"}:
                     </span>{" "}
                     {entry.text.substring(0, 80)}
                     {entry.text.length > 80 && "..."}
@@ -261,4 +261,4 @@ const JarvisDemoOverlay = memo(function JarvisDemoOverlay({
   );
 });
 
-export default JarvisDemoOverlay;
+export default AgnesDemoOverlay;

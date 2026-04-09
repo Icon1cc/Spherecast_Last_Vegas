@@ -1,5 +1,5 @@
 /**
- * Jarvis Demo Mode Types
+ * Agnes Demo Mode Types
  */
 
 export type DemoPhase =
@@ -13,7 +13,7 @@ export type DemoPhase =
 
 export interface TranscriptEntry {
   id: string;
-  role: "user" | "jarvis";
+  role: "user" | "agnes";
   text: string;
   timestamp: Date;
 }

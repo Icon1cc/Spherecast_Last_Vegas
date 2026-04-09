@@ -1,5 +1,5 @@
 /**
- * useJarvisDemo - State machine for Jarvis Demo Mode
+ * useAgnesDemo - State machine for Agnes Demo Mode
  * Orchestrates voice I/O, AI conversation, and navigation
  */
 
@@ -9,7 +9,7 @@ import { useVoiceIO } from "./useVoiceIO";
 import { parseIntent, shouldEndDemo, hasNavigation } from "@/lib/intentParser";
 import type { DemoState, DemoAction, DemoPhase, TranscriptEntry, NavigationTarget } from "@/types/demo";
 
-const JARVIS_GREETING = "Hello, I'm Jarvis, your AI supply chain assistant. What would you like to explore today?";
+const AGNES_GREETING = "Hello, I'm Agnes, your AI supply chain assistant. What would you like to explore today?";
 
 const initialState: DemoState = {
   phase: "IDLE",
@@ -70,10 +70,10 @@ function demoReducer(state: DemoState, action: DemoAction): DemoState {
         phase: "THINKING",
       };
 
-    case "AI_RESPONSE": {
+    case "AI_RESPONSE":
       const newTranscript: TranscriptEntry = {
         id: crypto.randomUUID(),
-        role: "jarvis",
+        role: "agnes",
         text: action.payload.speech,
         timestamp: new Date(),
       };
@@ -88,7 +88,6 @@ function demoReducer(state: DemoState, action: DemoAction): DemoState {
           { role: "assistant", content: action.payload.speech },
         ],
       };
-    }
 
     case "SPEECH_START":
       return {
@@ -156,13 +155,13 @@ function demoReducer(state: DemoState, action: DemoAction): DemoState {
   }
 }
 
-interface UseJarvisDemoOptions {
+interface UseAgnesDemoOptions {
   onNavigate?: (target: NavigationTarget) => void;
   onComplete?: () => void;
   onError?: (error: string) => void;
 }
 
-export interface UseJarvisDemoReturn {
+export interface UseAgnesDemoReturn {
   state: DemoState;
   phase: DemoPhase;
   transcript: TranscriptEntry[];
@@ -173,7 +172,7 @@ export interface UseJarvisDemoReturn {
   interrupt: () => void;
 }
 
-export function useJarvisDemo(options: UseJarvisDemoOptions = {}): UseJarvisDemoReturn {
+export function useAgnesDemo(options: UseAgnesDemoOptions = {}): UseAgnesDemoReturn {
   const [state, dispatch] = useReducer(demoReducer, initialState);
   const navigate = useNavigate();
   const location = useLocation();
@@ -208,14 +207,24 @@ export function useJarvisDemo(options: UseJarvisDemoOptions = {}): UseJarvisDemo
    * Send message to AI and get response
    */
   const sendToAI = useCallback(async (message: string, history: Array<{ role: "user" | "assistant"; content: string }>) => {
-    const response = await fetch("/api/chat/message", {
+    const response = await fetch("/api/chat/demo", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message, history, isDemo: true }),
     });
 
     if (!response.ok) {
-      throw new Error("Failed to get AI response");
+      // Fallback to regular chat endpoint
+      const fallbackResponse = await fetch("/api/chat/message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message, history }),
+      });
+      if (!fallbackResponse.ok) {
+        throw new Error("Failed to get AI response");
+      }
+      const data = await fallbackResponse.json();
+      return data.response as string;
     }
 
     const data = await response.json();
@@ -238,14 +247,13 @@ export function useJarvisDemo(options: UseJarvisDemoOptions = {}): UseJarvisDemo
           navigate("/");
         }
         break;
-      case "ANALYSIS": {
+      case "ANALYSIS":
         const params = new URLSearchParams({
           product: target.productName || "Product",
           material: target.materialName || "Material",
         });
         navigate(`/analysis/${target.productId}/${target.materialId}?${params}`);
         break;
-      }
     }
 
     // Wait for navigation to settle
@@ -284,7 +292,7 @@ export function useJarvisDemo(options: UseJarvisDemoOptions = {}): UseJarvisDemo
     if (state.phase !== "GREETING") return;
 
     const doGreeting = async () => {
-      await voiceIO.speak(JARVIS_GREETING);
+      await voiceIO.speak(AGNES_GREETING);
       dispatch({ type: "GREETING_COMPLETE" });
     };
 

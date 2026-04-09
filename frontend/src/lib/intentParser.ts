@@ -1,5 +1,5 @@
 /**
- * Intent Parser for Jarvis Demo Mode
+ * Intent Parser for Agnes Demo Mode
  * Extracts navigation commands and actions from AI responses
  */
 
