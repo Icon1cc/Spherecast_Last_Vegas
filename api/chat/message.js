@@ -176,11 +176,28 @@ export default async function handler(req, res) {
     // Initialize Gemini
     const genAI = new GoogleGenerativeAI(apiKey);
 
+    // Build shared chat history (used by both paths)
+    const chatHistory = [
+      { role: "user", parts: [{ text: contextPrompt }] },
+      {
+        role: "model",
+        parts: [{
+          text: demoMode
+            ? "Ready to guide you through SupplyWise. What would you like to explore?"
+            : "Understood. I'm Agnes, ready to help with supply chain decisions. How can I assist you?",
+        }],
+      },
+      ...history.map((msg) => ({
+        role: msg.role === "user" ? "user" : "model",
+        parts: [{ text: msg.content }],
+      })),
+    ];
+
     let response;
     let searchGroundingUsed = false;
 
     if (useSearch) {
-      // Use the same model with Google Search grounding tool
+      // Use startChat (not generateContent) so history is preserved
       try {
         const searchModel = genAI.getGenerativeModel({
           model: GEMINI_DEFAULT_MODEL,
@@ -188,65 +205,34 @@ export default async function handler(req, res) {
             maxOutputTokens: GEMINI_MAX_OUTPUT_TOKENS,
             temperature: GEMINI_TEMPERATURE,
           },
-          // Enable Google Search grounding
-          tools: [{
-            googleSearch: {}
-          }],
+          tools: [{ googleSearch: {} }],
         });
 
-        // Build the prompt with context
-        const searchPrompt = `${contextPrompt}
-
-You have access to Google Search for real-time information. Use it when answering questions about current prices, regulations, news, or any time-sensitive information.
-
-User question: ${message}
-
-Provide a helpful, accurate response. If you used search results, mention the source briefly.`;
-
-        const result = await searchModel.generateContent(searchPrompt);
+        const chat = searchModel.startChat({ history: chatHistory });
+        const result = await chat.sendMessage(message);
         response = result.response.text();
         searchGroundingUsed = true;
 
-        // Check if grounding metadata is available
+        // Append sources if grounding metadata available
         const groundingMetadata = result.response.candidates?.[0]?.groundingMetadata;
         if (groundingMetadata?.groundingChunks?.length > 0) {
-          // Append sources if available
           const sources = groundingMetadata.groundingChunks
             .filter(chunk => chunk.web?.uri)
             .slice(0, 3)
             .map(chunk => chunk.web.title || chunk.web.uri);
-
           if (sources.length > 0) {
             response += `\n\n*Sources: ${sources.join(", ")}*`;
           }
         }
       } catch (searchErr) {
         console.warn("Search grounding failed, falling back to standard chat:", searchErr.message);
-        // Fall through to standard model
+        // Fall through to standard model below
       }
     }
 
     // Standard model (no search) or fallback
     if (!response) {
       const model = genAI.getGenerativeModel({ model: GEMINI_DEFAULT_MODEL });
-
-      // Build chat history
-      const chatHistory = [
-        { role: "user", parts: [{ text: contextPrompt }] },
-        {
-          role: "model",
-          parts: [{
-            text: demoMode
-              ? "Ready to guide you through SupplyWise. What would you like to explore?"
-              : "Understood. I'm Agnes, ready to help with supply chain decisions. How can I assist you?",
-          }],
-        },
-        ...history.map((msg) => ({
-          role: msg.role === "user" ? "user" : "model",
-          parts: [{ text: msg.content }],
-        })),
-      ];
-
       const chat = model.startChat({
         history: chatHistory,
         generationConfig: {
@@ -254,7 +240,6 @@ Provide a helpful, accurate response. If you used search results, mention the so
           temperature: demoMode ? 0.4 : GEMINI_TEMPERATURE,
         },
       });
-
       const result = await chat.sendMessage(message);
       response = result.response.text();
     }
