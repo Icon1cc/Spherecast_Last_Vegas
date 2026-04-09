@@ -93,7 +93,8 @@ function summarizeCertifications(certs: Record<string, string> | null | undefine
 
 function buildTier1Reasoning(
   row: SubstitutionTier1,
-  component: SubstitutionResponse["component"]
+  component: SubstitutionResponse["component"],
+  weights: AnalysisWeights
 ): string {
   const casText = component.cas_number
     ? `Same CAS (${component.cas_number}) as current ingredient.`
@@ -102,12 +103,41 @@ function buildTier1Reasoning(
   const certText = summarizeCertifications(row.certifications);
   const geo = row.country ?? row.region ?? "Location information missing";
 
-  return `${casText} ${priceText}. ${certText}. Supplier region: ${geo}.`;
+  // Build weight-based reasoning
+  const scorePercent = row.score != null ? Math.round(row.score * 100) : null;
+  const weightFactors: string[] = [];
+
+  // Highlight top 2 priorities (weights >= 7)
+  const priorities = Object.entries(weights)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 2);
+
+  for (const [key, val] of priorities) {
+    if (val >= 7) {
+      if (key === "price" && row.price_per_unit != null) {
+        weightFactors.push(`strong on price priority`);
+      } else if (key === "regulatory") {
+        weightFactors.push(`meets regulatory focus`);
+      } else if (key === "certFit" && row.certifications && Object.keys(row.certifications).length > 0) {
+        weightFactors.push(`good certification match`);
+      } else if (key === "supplyRisk" && row.country) {
+        weightFactors.push(`geographic diversity`);
+      } else if (key === "functionalFit") {
+        weightFactors.push(`100% functional fit (same molecule)`);
+      }
+    }
+  }
+
+  const weightText = weightFactors.length > 0 ? ` Matches your priorities: ${weightFactors.join(", ")}.` : "";
+  const scoreText = scorePercent != null ? ` Overall score: ${scorePercent}%.` : "";
+
+  return `${casText} ${priceText}. ${certText}. Supplier region: ${geo}.${weightText}${scoreText}`;
 }
 
 function buildTier2Reasoning(
   row: SubstitutionTier2,
-  component: SubstitutionResponse["component"]
+  component: SubstitutionResponse["component"],
+  weights: AnalysisWeights
 ): string {
   const roleText = component.functional_role
     ? `Matches functional role: ${component.functional_role}.`
@@ -115,7 +145,36 @@ function buildTier2Reasoning(
   const complianceText = `Compliance snapshot: vegan=${row.vegan_status ?? "unknown"}, EU=${row.market_ban_eu ?? "unknown"}, US=${row.market_ban_us ?? "unknown"}.`;
   const priceText = row.price_per_unit != null ? `Price: $${row.price_per_unit}/unit.` : "Price information missing.";
 
-  return `${roleText} ${complianceText} ${priceText}`;
+  // Build weight-based reasoning
+  const scorePercent = row.score != null ? Math.round(row.score * 100) : null;
+  const weightFactors: string[] = [];
+
+  // Highlight top 2 priorities (weights >= 7)
+  const priorities = Object.entries(weights)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 2);
+
+  for (const [key, val] of priorities) {
+    if (val >= 7) {
+      if (key === "price" && row.price_per_unit != null) {
+        weightFactors.push(`competitive pricing`);
+      } else if (key === "regulatory" && (row.market_ban_eu === "permitted" || row.market_ban_us === "permitted")) {
+        weightFactors.push(`regulatory compliant`);
+      } else if (key === "certFit") {
+        const certs = [row.vegan_status, row.halal_status, row.kosher_status].filter(s => s === "yes" || s === "certified");
+        if (certs.length > 0) weightFactors.push(`certification aligned`);
+      } else if (key === "supplyRisk" && row.patent_lock !== "yes") {
+        weightFactors.push(`low supply risk`);
+      } else if (key === "functionalFit") {
+        weightFactors.push(`80% functional fit (same role, different molecule)`);
+      }
+    }
+  }
+
+  const weightText = weightFactors.length > 0 ? ` Matches your priorities: ${weightFactors.join(", ")}.` : "";
+  const scoreText = scorePercent != null ? ` Overall score: ${scorePercent}%.` : "";
+
+  return `${roleText} ${complianceText} ${priceText}${weightText}${scoreText}`;
 }
 
 function ExternalLinkButton({ href, label, icon: Icon }: { href: string | null | undefined; label: string; icon: React.ElementType }) {
@@ -653,7 +712,7 @@ const AnalysisPage = () => {
                               {r.price_moq && <div className="text-xs text-muted-foreground">MOQ: {r.price_moq}</div>}
                             </td>
                             <td className="px-4 py-2 text-xs text-muted-foreground hidden lg:table-cell">
-                              {buildTier1Reasoning(r, substitution.component)}
+                              {buildTier1Reasoning(r, substitution.component, weights)}
                             </td>
                             <td className="px-4 py-2 hidden sm:table-cell">
                               <div className="flex flex-wrap gap-1">
@@ -751,7 +810,7 @@ const AnalysisPage = () => {
                             <td className="px-4 py-2 text-muted-foreground hidden md:table-cell">{r.country ?? "—"}</td>
                             <td className="px-4 py-2"><ComplianceBadge value={r.vegan_status} /></td>
                             <td className="px-4 py-2 text-xs text-muted-foreground hidden lg:table-cell">
-                              {buildTier2Reasoning(r, substitution.component)}
+                              {buildTier2Reasoning(r, substitution.component, weights)}
                             </td>
                             <td className="px-4 py-2">
                               <button

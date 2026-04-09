@@ -159,6 +159,7 @@ export interface SubstitutionTier1 {
   product_page_url: string | null;
   spec_sheet_url: string | null;
   refs: SubstitutionRef[] | null;
+  score?: number;
 }
 
 export interface SubstitutionTier2 {
@@ -166,6 +167,7 @@ export interface SubstitutionTier2 {
   canonical_name: string;
   vegan_status: string | null;
   halal_status: string | null;
+  kosher_status: string | null;
   market_ban_eu: string | null;
   market_ban_us: string | null;
   patent_lock: string | null;
@@ -174,6 +176,7 @@ export interface SubstitutionTier2 {
   country: string | null;
   price_per_unit: number | null;
   certifications: Record<string, string> | null;
+  score?: number;
 }
 
 export interface SubstitutionReasoning {
