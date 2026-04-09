@@ -372,11 +372,18 @@ const AnalysisPage = () => {
                 Recommended Supplier
               </h2>
               <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
-                <div>
+                <div className="flex-1">
                   <p className="text-xl font-bold">{analysis.recommendedSupplier.name}</p>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {analysis.recommendedSupplier.reasoning}
-                  </p>
+                  {analysis.recommendedSupplier.country && (
+                    <p className="text-sm text-muted-foreground mt-0.5">
+                      {analysis.recommendedSupplier.country}
+                      {analysis.recommendedSupplier.price && (
+                        <span className="ml-2">
+                          • {analysis.recommendedSupplier.priceCurrency ?? '$'}{analysis.recommendedSupplier.price}/{analysis.recommendedSupplier.priceUnit ?? 'unit'}
+                        </span>
+                      )}
+                    </p>
+                  )}
                 </div>
                 <div className="shrink-0 flex flex-col items-start sm:items-end gap-2">
                   <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-success/10 text-success">
@@ -391,6 +398,62 @@ const AnalysisPage = () => {
                   </button>
                 </div>
               </div>
+
+              {/* Detailed Reasoning */}
+              <div className="bg-muted/30 rounded-lg p-4 mb-4">
+                <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                  Why This Supplier?
+                </h4>
+                <p className="text-sm leading-relaxed">
+                  {analysis.recommendedSupplier.reasoning}
+                </p>
+
+                {/* Reasoning Details Grid */}
+                {analysis.recommendedSupplier.reasoningDetails && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4 pt-3 border-t border-border/50">
+                    <div>
+                      <span className="text-xs font-medium text-muted-foreground">Price Analysis</span>
+                      <p className="text-xs mt-0.5">{analysis.recommendedSupplier.reasoningDetails.price_analysis}</p>
+                    </div>
+                    <div>
+                      <span className="text-xs font-medium text-muted-foreground">Compliance</span>
+                      <p className="text-xs mt-0.5">{analysis.recommendedSupplier.reasoningDetails.compliance}</p>
+                    </div>
+                    <div>
+                      <span className="text-xs font-medium text-muted-foreground">Supply Chain</span>
+                      <p className="text-xs mt-0.5">{analysis.recommendedSupplier.reasoningDetails.supply_chain}</p>
+                    </div>
+                    <div>
+                      <span className="text-xs font-medium text-muted-foreground">Certifications</span>
+                      <p className="text-xs mt-0.5">{analysis.recommendedSupplier.reasoningDetails.certifications}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Sources */}
+                {analysis.recommendedSupplier.refs && analysis.recommendedSupplier.refs.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-border/50">
+                    <span className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                      <BookOpen className="w-3 h-3" /> Sources
+                    </span>
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {analysis.recommendedSupplier.refs.slice(0, 3).map((ref, i) => (
+                        <a
+                          key={i}
+                          href={ref.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-primary hover:underline flex items-center gap-1"
+                        >
+                          <ExternalLink className="w-2.5 h-2.5" />
+                          {ref.note ? ref.note.substring(0, 30) + (ref.note.length > 30 ? '...' : '') : 'Source'}
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {analysis.alternatives.length > 0 && (
                 <div className="border-t pt-4">
                   <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
@@ -401,7 +464,10 @@ const AnalysisPage = () => {
                       <li key={alt.name} className="flex items-center justify-between text-sm">
                         <div>
                           <span className="font-medium">{alt.name}</span>
-                          <span className="text-muted-foreground ml-2 hidden sm:inline">
+                          {alt.country && (
+                            <span className="text-muted-foreground ml-1 text-xs">({alt.country})</span>
+                          )}
+                          <span className="text-muted-foreground ml-2 hidden sm:inline text-xs">
                             — {alt.reasoning}
                           </span>
                         </div>
@@ -751,6 +817,31 @@ const AnalysisPage = () => {
                     );
                   })}
                 </div>
+
+                {/* Sources for AI Recommendation */}
+                {substitution.aiRecommendation.sources && substitution.aiRecommendation.sources.length > 0 && (
+                  <div className="mt-4 border-t pt-4">
+                    <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                      <BookOpen className="w-3.5 h-3.5" />
+                      Sources & References
+                    </h4>
+                    <ul className="space-y-1.5">
+                      {substitution.aiRecommendation.sources.map((ref, i) => (
+                        <li key={i} className="text-xs flex items-start gap-2">
+                          <ExternalLink className="w-3 h-3 mt-0.5 shrink-0 text-muted-foreground" />
+                          <a
+                            href={ref.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary hover:underline break-all"
+                          >
+                            {ref.note || ref.url}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             )}
           </section>

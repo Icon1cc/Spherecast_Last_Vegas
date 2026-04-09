@@ -45,6 +45,24 @@ export interface Supplier {
   name: string;
   score: number;
   reasoning: string;
+  country?: string;
+  price?: number;
+}
+
+export interface ReasoningDetails {
+  summary: string;
+  price_analysis: string;
+  compliance: string;
+  supply_chain: string;
+  certifications: string;
+}
+
+export interface RecommendedSupplier extends Supplier {
+  reasoningDetails?: ReasoningDetails | null;
+  priceCurrency?: string;
+  priceUnit?: string;
+  certifications?: Record<string, string>;
+  refs?: Array<{ url: string; note?: string }>;
 }
 
 export interface AnalysisResponse {
@@ -52,7 +70,7 @@ export interface AnalysisResponse {
     id: number;
     name: string;
   };
-  recommendedSupplier: Supplier;
+  recommendedSupplier: RecommendedSupplier;
   alternatives: Supplier[];
   metrics: AnalysisWeights;
   supplierCount: number;
@@ -195,6 +213,7 @@ export interface SubstitutionResponse {
     tier: number;
     confidence: number;
     reasoning: SubstitutionReasoning;
+    sources?: SubstitutionRef[];
   } | null;
   weights: AnalysisWeights;
 }

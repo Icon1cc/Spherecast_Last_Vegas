@@ -147,43 +147,74 @@ export async function substitutionHandler(req, res) {
     let aiRecommendation = null;
     const geminiKey = process.env.GEMINI_API_KEY?.trim();
 
+    // Collect all refs from tier1 for sources
+    const allRefs = tier1.flatMap(r => r.refs ?? []).filter(ref => ref && ref.url);
+
     if (geminiKey) {
       const t1Summary = tier1.length > 0
-        ? tier1.slice(0, 3).map(r => `- ${r.supplier_name} (${r.country ?? "unknown"})${r.price_per_unit ? ` $${r.price_per_unit}/unit` : ""}`).join("\n")
+        ? tier1.slice(0, 5).map(r => {
+            const price = r.price_per_unit ? `$${r.price_per_unit}/${r.price_unit || 'unit'}` : "price unknown";
+            const certs = r.certifications ? Object.entries(r.certifications).map(([k,v]) => `${k}:${v}`).join(", ") : "no certs";
+            return `- ${r.supplier_name} (${r.country ?? "unknown"}): ${price}, certifications: ${certs}`;
+          }).join("\n")
         : "None found in database";
 
       const t2Summary = tier2.length > 0
-        ? tier2.slice(0, 3).map(r => `- ${r.canonical_name} from ${r.supplier_name} (${r.country ?? "unknown"}), vegan=${r.vegan_status}, EU=${r.market_ban_eu}`).join("\n")
+        ? tier2.slice(0, 5).map(r => {
+            const price = r.price_per_unit ? `$${r.price_per_unit}/unit` : "price unknown";
+            return `- ${r.canonical_name} (CAS: ${r.cas_number}) from ${r.supplier_name} (${r.country ?? "unknown"}): ${price}, vegan=${r.vegan_status}, EU=${r.market_ban_eu}, patent_lock=${r.patent_lock}`;
+          }).join("\n")
         : "None found in database";
 
-      const prompt = `You are a supply chain advisor for dietary supplement manufacturing.
+      const prompt = `You are a senior supply chain advisor for dietary supplement and CPG manufacturing. Provide detailed, actionable recommendations.
 
-COMPONENT: ${base.canonical_name ?? base.name} (CAS: ${base.cas_number ?? "unknown"})
-FUNCTIONAL ROLE: ${base.functional_role ?? "unknown"}
-CURRENT SUPPLIER: ${base.current_supplier_name ?? "unknown"} (${base.current_country ?? "unknown"})
+COMPONENT ANALYSIS REQUEST:
+- Component: ${base.canonical_name ?? base.name}
+- CAS Number: ${base.cas_number ?? "unknown"}
+- Functional Role: ${base.functional_role ?? "unknown"}
+- Current Supplier: ${base.current_supplier_name ?? "unknown"} (${base.current_country ?? "unknown"})
+- Current Price: ${base.current_price ? `$${base.current_price}/unit` : "unknown"}
+
 COMPLIANCE PROFILE:
-  vegan=${base.vegan_status ?? "unknown"}, halal=${base.halal_status ?? "unknown"}
-  EU market=${base.market_ban_eu ?? "unknown"}, US market=${base.market_ban_us ?? "unknown"}
-  patent_lock=${base.patent_lock ?? "unknown"}, single_manufacturer=${base.single_manufacturer ?? "unknown"}
-USER PRIORITIES (1-10): price=${weights.price}, regulatory_compliance=${weights.regulatory}, certification_fit=${weights.certFit}, supply_risk=${weights.supplyRisk}, functional_fit=${weights.functionalFit}
+- Vegan: ${base.vegan_status ?? "unknown"}
+- Halal: ${base.halal_status ?? "unknown"}
+- Kosher: ${base.kosher_status ?? "unknown"}
+- EU Market Status: ${base.market_ban_eu ?? "unknown"}
+- US Market Status: ${base.market_ban_us ?? "unknown"}
+- Patent Lock: ${base.patent_lock ?? "unknown"}
+- Single Manufacturer: ${base.single_manufacturer ?? "unknown"}
 
-TIER 1 ALTERNATIVES (same molecule, different supplier):
+USER PRIORITIES (1-10 scale, higher = more important):
+- Price/Cost: ${weights.price}
+- Regulatory Compliance: ${weights.regulatory}
+- Certification Fit: ${weights.certFit}
+- Supply Risk Mitigation: ${weights.supplyRisk}
+- Functional Fit: ${weights.functionalFit}
+
+TIER 1 ALTERNATIVES (same molecule/CAS, different supplier - drop-in replacement):
 ${t1Summary}
 
-TIER 2 ALTERNATIVES (same function, different molecule):
+TIER 2 ALTERNATIVES (same function, different molecule - requires reformulation):
 ${t2Summary}
 
-Based on the data above, recommend the single best substitution option.
-Respond ONLY with valid JSON in this exact format (no markdown, no explanation outside JSON):
+Based on the data above and user priorities, recommend the single best substitution option.
+
+IMPORTANT: Provide detailed reasoning (2-3 sentences each) that explains WHY this is the best choice, citing specific data points. Consider:
+- Price comparison vs current supplier
+- Geographic diversification benefits
+- Certification and compliance advantages
+- Risk factors (single-source, patent, regulatory)
+
+Respond ONLY with valid JSON (no markdown fences):
 {
-  "recommendation": "supplier or ingredient name",
+  "recommendation": "exact supplier or ingredient name from the lists above",
   "tier": 1,
   "confidence": 0.85,
   "reasoning": {
-    "functional_equivalence": "one sentence explaining functional match",
-    "compliance_fit": "one sentence on regulatory and cert status",
-    "supply_risk": "one sentence on geographic/patent/single-source risk",
-    "cost_impact": "one sentence on price impact or null if unknown"
+    "functional_equivalence": "2-3 sentences explaining functional match and why this is a suitable replacement",
+    "compliance_fit": "2-3 sentences on regulatory status, certifications, and market access",
+    "supply_risk": "2-3 sentences on geographic diversification, patent status, and supply chain resilience",
+    "cost_impact": "2-3 sentences on price comparison, MOQ, and total cost of ownership"
   }
 }`;
 
@@ -191,32 +222,58 @@ Respond ONLY with valid JSON in this exact format (no markdown, no explanation o
         const genAI = new GoogleGenerativeAI(geminiKey);
         const model = genAI.getGenerativeModel({
           model: GEMINI_DEFAULT_MODEL,
-          generationConfig: { temperature: 0.3, maxOutputTokens: 512 },
+          generationConfig: { temperature: 0.3, maxOutputTokens: 1024 },
         });
         const result = await model.generateContent(prompt);
         const text = result.response.text().trim();
         // Strip markdown fences if present
         const jsonText = text.replace(/^```json?\s*/i, "").replace(/```\s*$/i, "").trim();
         aiRecommendation = JSON.parse(jsonText);
+
+        // Attach relevant sources to the AI recommendation
+        if (aiRecommendation) {
+          // Find refs from the recommended supplier if tier 1
+          const recommendedSupplier = tier1.find(r =>
+            r.supplier_name.toLowerCase() === aiRecommendation.recommendation.toLowerCase()
+          );
+          const supplierRefs = recommendedSupplier?.refs ?? [];
+
+          // Combine with general refs, deduplicate by URL
+          const seenUrls = new Set();
+          const combinedRefs = [...supplierRefs, ...allRefs.slice(0, 5)].filter(ref => {
+            if (seenUrls.has(ref.url)) return false;
+            seenUrls.add(ref.url);
+            return true;
+          }).slice(0, 8);
+
+          aiRecommendation.sources = combinedRefs;
+        }
       } catch (aiErr) {
         // Fall through to deterministic fallback below.
+        console.error("AI recommendation error:", aiErr);
       }
     }
 
     // Deterministic fallback when Gemini is unavailable or fails.
     if (!aiRecommendation) {
       const best = tier1[0] ?? tier2[0];
+      const bestRefs = tier1[0]?.refs ?? [];
       aiRecommendation = best
         ? {
             recommendation: tier1[0] ? tier1[0].supplier_name : tier2[0].canonical_name,
             tier: tier1[0] ? 1 : 2,
             confidence: 0.6,
             reasoning: {
-              functional_equivalence: "Same functional role confirmed in ingredient database.",
-              compliance_fit: `Regulatory status: EU=${base.market_ban_eu}, vegan=${base.vegan_status}.`,
-              supply_risk: base.single_manufacturer === "yes" ? "Single-manufacturer ingredient — limited alternatives." : "Multiple suppliers available.",
-              cost_impact: null,
+              functional_equivalence: `This ${tier1[0] ? "supplier offers the identical molecule (same CAS number)" : "ingredient serves the same functional role"} as your current ingredient, ensuring compatibility with your existing formulation. ${base.functional_role ? `Both serve as ${base.functional_role} in the product.` : ""} No reformulation or stability testing should be required for this substitution.`,
+              compliance_fit: `Regulatory status shows EU market: ${base.market_ban_eu ?? "unknown"}, US market: ${base.market_ban_us ?? "unknown"}. Certification profile: vegan=${base.vegan_status ?? "unknown"}, halal=${base.halal_status ?? "unknown"}, kosher=${base.kosher_status ?? "unknown"}. This matches your current ingredient's compliance requirements.`,
+              supply_risk: base.single_manufacturer === "yes"
+                ? "This is a single-manufacturer ingredient, which presents supply chain concentration risk. Consider qualifying multiple suppliers for business continuity. Geographic diversification may be limited."
+                : `Multiple suppliers are available for this ingredient, providing supply chain resilience. ${tier1.length > 1 ? `We identified ${tier1.length} alternative suppliers across different regions.` : ""} This reduces single-source dependency risk.`,
+              cost_impact: best.price_per_unit != null
+                ? `Listed at $${best.price_per_unit}/${best.price_unit || 'unit'}. ${base.current_price ? `Compared to current price of $${base.current_price}/unit, this represents a ${best.price_per_unit < base.current_price ? 'cost savings' : 'price increase'}.` : "Compare with your current supplier pricing for accurate cost analysis."} ${best.price_moq ? `MOQ: ${best.price_moq}.` : ""}`
+                : "Price information not available in our database. Contact the supplier directly for current pricing and volume discounts.",
             },
+            sources: bestRefs.slice(0, 5),
           }
         : null;
     }
