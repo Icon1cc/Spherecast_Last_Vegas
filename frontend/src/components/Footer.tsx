@@ -13,9 +13,16 @@ const Footer = () => {
   return (
     <footer className="h-12 bg-header flex items-center px-6 mt-auto">
       <div className="flex items-center justify-between w-full max-w-7xl mx-auto">
-        <span className="text-header-foreground/70 text-xs">
-          &copy; {currentYear} SupplyWise AI. All rights reserved.
-        </span>
+        <div className="flex items-center gap-2">
+          <img
+            src="/logo.jpeg"
+            alt="SupplyWise AI logo"
+            className="w-5 h-5 rounded-full object-cover ring-1 ring-header-foreground/20"
+          />
+          <span className="text-header-foreground/70 text-xs">
+            &copy; {currentYear} SupplyWise AI. All rights reserved.
+          </span>
+        </div>
         <nav className="flex items-center gap-4">
           {FOOTER_LINKS.map(({ label, href }) => (
             <Link

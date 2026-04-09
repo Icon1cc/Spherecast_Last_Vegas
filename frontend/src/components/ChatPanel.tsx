@@ -9,7 +9,7 @@ interface ChatPanelProps {
   onClose: () => void;
 }
 
-const APP_INITIALS = "JR";
+const APP_LOGO_SRC = "/logo.jpeg";
 const JARVIS_GREETING = "Hello I am jarvis, how can I help you today";
 const DEFAULT_ELEVENLABS_VOICE_ID = "s3TPKV1kjDlVtZbl4Ksh";
 const ELEVENLABS_VOICE_ID =
@@ -740,7 +740,10 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
       <div className="relative w-full md:w-[520px] h-full bg-card shadow-2xl animate-slide-in-right flex flex-col">
         {/* Header */}
         <header className="h-14 bg-header flex items-center justify-between px-4 shrink-0">
-          <span className="text-header-foreground font-semibold text-sm">Jarvis Assistant</span>
+          <div className="flex items-center gap-2">
+            <img src={APP_LOGO_SRC} alt="SupplyWise AI logo" className="w-7 h-7 rounded-full object-cover ring-1 ring-header-foreground/30" />
+            <span className="text-header-foreground font-semibold text-sm">Jarvis Assistant</span>
+          </div>
           <button
             onClick={onClose}
             className="text-header-foreground/70 hover:text-header-foreground transition-colors"
@@ -793,8 +796,8 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
                     }`}
                   >
                     {msg.role === "assistant" && (
-                      <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-primary text-[10px] font-bold shrink-0 mt-0.5">
-                        {APP_INITIALS}
+                      <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5 overflow-hidden">
+                        <img src={APP_LOGO_SRC} alt="Assistant logo" className="w-full h-full object-cover" />
                       </div>
                     )}
                     <div>

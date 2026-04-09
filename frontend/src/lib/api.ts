@@ -221,10 +221,13 @@ export async function getSubstitutionCandidates(
   componentId: number,
   weights?: Partial<AnalysisWeights>
 ): Promise<SubstitutionResponse> {
-  const weightsParam = weights
-    ? Object.entries(weights).map(([k, v]) => `${k}:${v}`).join(",")
-    : "";
-  const url = `/api/substitution/${componentId}${weightsParam ? `?weights=${weightsParam}` : ""}`;
+  const params = new URLSearchParams({ id: componentId.toString() });
+  if (weights) {
+    const weightsParam = Object.entries(weights).map(([k, v]) => `${k}:${v}`).join(",");
+    if (weightsParam) params.set("weights", weightsParam);
+  }
+
+  const url = `/api/substitution/component?${params.toString()}`;
   const response = await fetch(url);
   if (!response.ok) {
     throw await buildApiError(response, "Failed to fetch substitution candidates");

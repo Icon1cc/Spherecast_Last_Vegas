@@ -38,7 +38,15 @@ import { toast } from "sonner";
 import Layout from "@/components/Layout";
 import ChatIcon from "@/components/ChatIcon";
 import ChatPanel from "@/components/ChatPanel";
-import { getComponentAnalysis, getSubstitutionCandidates, type AnalysisWeights, type AnalysisResponse, type SubstitutionResponse, type SubstitutionTier1 } from "@/lib/api";
+import {
+  getComponentAnalysis,
+  getSubstitutionCandidates,
+  type AnalysisWeights,
+  type AnalysisResponse,
+  type SubstitutionResponse,
+  type SubstitutionTier1,
+  type SubstitutionTier2,
+} from "@/lib/api";
 
 const SLIDER_CONFIG = [
   { key: "price",        label: "Price / Cost",            icon: DollarSign,   tooltip: "Favour lower-cost suppliers and ingredients" },
@@ -56,8 +64,16 @@ const DEFAULT_WEIGHTS: AnalysisWeights = {
   functionalFit: 5,
 };
 
+const MISSING_INFO_TEXT = "Information missing";
+
+function displayValue(value: string | number | null | undefined): string {
+  if (value === null || value === undefined) return MISSING_INFO_TEXT;
+  const text = String(value).trim();
+  return text.length > 0 ? text : MISSING_INFO_TEXT;
+}
+
 function ComplianceBadge({ value }: { value: string | null | undefined }) {
-  if (!value || value === "unknown") return <span className="text-muted-foreground text-xs">—</span>;
+  if (!value || value === "unknown") return <span className="text-muted-foreground text-xs italic">{MISSING_INFO_TEXT}</span>;
   if (value === "yes" || value === "permitted" || value === "certified" || value === "compliant")
     return <span className="inline-flex items-center gap-1 text-xs text-green-600"><CheckCircle className="w-3 h-3" />{value}</span>;
   if (value === "no" || value === "banned" || value === "non_compliant")
@@ -183,10 +199,45 @@ const AnalysisPage = () => {
     toast.success("Saved to history");
   }, []);
 
+  const substitutionData = useMemo<SubstitutionResponse>(() => {
+    if (substitution) return substitution;
+    return {
+      component: {
+        id: componentId > 0 ? componentId : 0,
+        name: analysis?.component?.name ?? materialName,
+        cas_number: null,
+        canonical_name: null,
+        functional_role: null,
+      },
+      complianceProfile: {
+        vegan_status: null,
+        vegetarian_status: null,
+        halal_status: null,
+        kosher_status: null,
+        non_gmo_status: null,
+        organic_status: null,
+        market_ban_eu: null,
+        market_ban_us: null,
+        patent_lock: null,
+        single_manufacturer: null,
+        allergen_flags: null,
+        label_form_claim: null,
+        health_claim_form: null,
+      },
+      tier1: [],
+      tier2: [],
+      aiRecommendation: null,
+      weights,
+    };
+  }, [substitution, componentId, analysis?.component?.name, materialName, weights]);
+
   const allRefs = useMemo(() => {
-    if (!substitution?.tier1) return [];
-    return substitution.tier1.flatMap(r => r.refs ?? []);
-  }, [substitution]);
+    if (!substitutionData.tier1) return [];
+    return substitutionData.tier1.flatMap((r) => r.refs ?? []);
+  }, [substitutionData]);
+  const tier1Rows: Array<SubstitutionTier1 | null> = substitutionData.tier1.length > 0 ? substitutionData.tier1 : [null];
+  const tier2Rows: Array<SubstitutionTier2 | null> = substitutionData.tier2.length > 0 ? substitutionData.tier2 : [null];
+  const aiRecommendation = substitutionData.aiRecommendation;
 
   // Show error state
   if (isError) {
@@ -358,242 +409,273 @@ const AnalysisPage = () => {
           </div>
         )}
 
-        {substitution && (
+        {componentId > 0 && (
           <section className="mb-8 space-y-6">
             <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
               Substitution Candidates
             </h2>
 
             {/* Compliance Profile */}
-            {substitution.complianceProfile && substitution.component.cas_number && (
-              <div className="bg-muted/40 rounded-lg p-4 space-y-3">
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-                  <div><span className="text-muted-foreground text-xs block mb-1">Vegan</span><ComplianceBadge value={substitution.complianceProfile.vegan_status} /></div>
-                  <div><span className="text-muted-foreground text-xs block mb-1">Halal</span><ComplianceBadge value={substitution.complianceProfile.halal_status} /></div>
-                  <div><span className="text-muted-foreground text-xs block mb-1">Non-GMO</span><ComplianceBadge value={substitution.complianceProfile.non_gmo_status} /></div>
-                  <div><span className="text-muted-foreground text-xs block mb-1">Organic</span><ComplianceBadge value={substitution.complianceProfile.organic_status} /></div>
-                  <div><span className="text-muted-foreground text-xs block mb-1">EU Market</span><ComplianceBadge value={substitution.complianceProfile.market_ban_eu} /></div>
-                  <div><span className="text-muted-foreground text-xs block mb-1">US Market</span><ComplianceBadge value={substitution.complianceProfile.market_ban_us} /></div>
-                  <div><span className="text-muted-foreground text-xs block mb-1">Kosher</span><ComplianceBadge value={substitution.complianceProfile.kosher_status} /></div>
-                  <div><span className="text-muted-foreground text-xs block mb-1">Patent Lock</span><ComplianceBadge value={substitution.complianceProfile.patent_lock === "yes" ? "no" : substitution.complianceProfile.patent_lock === "no" ? "yes" : substitution.complianceProfile.patent_lock} /></div>
-                </div>
-                {substitution.complianceProfile.label_form_claim && (
-                  <p className="text-xs text-muted-foreground border-t pt-2">
-                    <span className="font-medium text-foreground">Label claim: </span>
-                    {substitution.complianceProfile.label_form_claim}
-                  </p>
-                )}
-                {Array.isArray(substitution.complianceProfile.allergen_flags) && substitution.complianceProfile.allergen_flags.length > 0 && (
-                  <div className="flex flex-wrap gap-1 border-t pt-2">
-                    <span className="text-xs text-muted-foreground mr-1">Allergens:</span>
-                    {substitution.complianceProfile.allergen_flags.map((flag) => (
-                      <span key={flag} className="inline-block px-2 py-0.5 text-xs rounded-full bg-orange-100 text-orange-700 font-medium">{flag}</span>
-                    ))}
-                  </div>
-                )}
+            <div className="bg-muted/40 rounded-lg p-4 space-y-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+                <div><span className="text-muted-foreground text-xs block mb-1">Vegan</span><ComplianceBadge value={substitutionData.complianceProfile.vegan_status} /></div>
+                <div><span className="text-muted-foreground text-xs block mb-1">Halal</span><ComplianceBadge value={substitutionData.complianceProfile.halal_status} /></div>
+                <div><span className="text-muted-foreground text-xs block mb-1">Non-GMO</span><ComplianceBadge value={substitutionData.complianceProfile.non_gmo_status} /></div>
+                <div><span className="text-muted-foreground text-xs block mb-1">Organic</span><ComplianceBadge value={substitutionData.complianceProfile.organic_status} /></div>
+                <div><span className="text-muted-foreground text-xs block mb-1">EU Market</span><ComplianceBadge value={substitutionData.complianceProfile.market_ban_eu} /></div>
+                <div><span className="text-muted-foreground text-xs block mb-1">US Market</span><ComplianceBadge value={substitutionData.complianceProfile.market_ban_us} /></div>
+                <div><span className="text-muted-foreground text-xs block mb-1">Kosher</span><ComplianceBadge value={substitutionData.complianceProfile.kosher_status} /></div>
+                <div><span className="text-muted-foreground text-xs block mb-1">Patent Lock</span><ComplianceBadge value={substitutionData.complianceProfile.patent_lock} /></div>
               </div>
-            )}
 
-            {!substitution.component.cas_number && (
+              <p className="text-xs text-muted-foreground border-t pt-2">
+                <span className="font-medium text-foreground">Label claim: </span>
+                {displayValue(substitutionData.complianceProfile.label_form_claim)}
+              </p>
+
+              <div className="flex flex-wrap gap-1 border-t pt-2">
+                <span className="text-xs text-muted-foreground mr-1">Allergens:</span>
+                {Array.isArray(substitutionData.complianceProfile.allergen_flags) && substitutionData.complianceProfile.allergen_flags.length > 0
+                  ? substitutionData.complianceProfile.allergen_flags.map((flag) => (
+                      <span key={flag} className="inline-block px-2 py-0.5 text-xs rounded-full bg-orange-100 text-orange-700 font-medium">{flag}</span>
+                    ))
+                  : <span className="text-xs text-muted-foreground italic">{MISSING_INFO_TEXT}</span>}
+              </div>
+            </div>
+
+            {!substitutionData.component.cas_number && (
               <p className="text-sm text-muted-foreground italic">
-                No enrichment data yet for this ingredient — run the Agnes enrichment loop to enable substitution analysis.
+                CAS / enrichment details: {MISSING_INFO_TEXT}
               </p>
             )}
 
             {/* Tier 1 */}
-            {substitution.tier1.length > 0 && (
-              <div>
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                  Tier 1 — Same Molecule, Alternative Suppliers
-                </h3>
-                <div className="border rounded-lg overflow-hidden">
-                  <table className="w-full text-sm">
-                    <thead className="bg-muted/50">
-                      <tr>
-                        <th className="text-left px-4 py-2 font-medium">Supplier</th>
-                        <th className="text-left px-4 py-2 font-medium hidden md:table-cell">Country</th>
-                        <th className="text-left px-4 py-2 font-medium">Price/unit</th>
-                        <th className="text-left px-4 py-2 font-medium hidden sm:table-cell">Links</th>
-                        <th className="text-left px-4 py-2 font-medium">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {substitution.tier1.map((r: SubstitutionTier1, i: number) => {
-                        const isChosen = chosenSubstitute?.name === r.supplier_name && chosenSubstitute?.tier === 1;
-                        return (
-                          <tr key={r.supplier_id} className={i % 2 === 0 ? "" : "bg-muted/20"}>
-                            <td className="px-4 py-2">
-                              <div className="font-medium">{r.supplier_name}</div>
-                              {r.certifications && Object.keys(r.certifications).length > 0 && (
-                                <div className="text-xs text-muted-foreground mt-0.5">
-                                  {Object.entries(r.certifications).map(([k, v]) => `${k}: ${v}`).join(" · ")}
-                                </div>
-                              )}
-                            </td>
-                            <td className="px-4 py-2 text-muted-foreground hidden md:table-cell">
-                              {r.country ?? "—"}{r.region ? `, ${r.region}` : ""}
-                            </td>
-                            <td className="px-4 py-2">
-                              {r.price_per_unit != null
-                                ? <span className="font-medium">{r.price_currency ?? "$"}{r.price_per_unit}{r.price_unit ? `/${r.price_unit}` : "/unit"}</span>
-                                : <span className="text-muted-foreground">—</span>}
-                              {r.price_moq && <div className="text-xs text-muted-foreground">MOQ: {r.price_moq}</div>}
-                            </td>
-                            <td className="px-4 py-2 hidden sm:table-cell">
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                Tier 1 — Same Molecule, Alternative Suppliers
+              </h3>
+              <div className="border rounded-lg overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50">
+                    <tr>
+                      <th className="text-left px-4 py-2 font-medium">Supplier</th>
+                      <th className="text-left px-4 py-2 font-medium hidden md:table-cell">Country</th>
+                      <th className="text-left px-4 py-2 font-medium">Price/unit</th>
+                      <th className="text-left px-4 py-2 font-medium hidden sm:table-cell">Links</th>
+                      <th className="text-left px-4 py-2 font-medium">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tier1Rows.map((r, i) => {
+                      const isMissingRow = !r;
+                      const isChosen = !isMissingRow && chosenSubstitute?.name === r.supplier_name && chosenSubstitute?.tier === 1;
+                      const hasAnyLink = !isMissingRow && Boolean(r.sup_url || r.product_page_url || r.spec_sheet_url);
+                      return (
+                        <tr key={isMissingRow ? "missing-tier1-row" : `${r.supplier_id}-${i}`} className={i % 2 === 0 ? "" : "bg-muted/20"}>
+                          <td className="px-4 py-2">
+                            {isMissingRow ? (
+                              <span className="text-muted-foreground italic">{MISSING_INFO_TEXT}</span>
+                            ) : (
+                              <>
+                                <div className="font-medium">{displayValue(r.supplier_name)}</div>
+                                {r.certifications && Object.keys(r.certifications).length > 0 ? (
+                                  <div className="text-xs text-muted-foreground mt-0.5">
+                                    {Object.entries(r.certifications).map(([k, v]) => `${k}: ${v}`).join(" · ")}
+                                  </div>
+                                ) : (
+                                  <div className="text-xs text-muted-foreground mt-0.5 italic">{MISSING_INFO_TEXT}</div>
+                                )}
+                              </>
+                            )}
+                          </td>
+                          <td className="px-4 py-2 text-muted-foreground hidden md:table-cell">
+                            {isMissingRow
+                              ? <span className="italic">{MISSING_INFO_TEXT}</span>
+                              : displayValue([r.country, r.region].filter((part): part is string => Boolean(part && part.trim())).join(", "))}
+                          </td>
+                          <td className="px-4 py-2">
+                            {isMissingRow ? (
+                              <span className="text-muted-foreground italic">{MISSING_INFO_TEXT}</span>
+                            ) : (
+                              <>
+                                {r.price_per_unit != null
+                                  ? <span className="font-medium">{r.price_currency ?? "$"}{r.price_per_unit}{r.price_unit ? `/${r.price_unit}` : "/unit"}</span>
+                                  : <span className="text-muted-foreground italic">{MISSING_INFO_TEXT}</span>}
+                                <div className="text-xs text-muted-foreground">{displayValue(r.price_moq ? `MOQ: ${r.price_moq}` : null)}</div>
+                              </>
+                            )}
+                          </td>
+                          <td className="px-4 py-2 hidden sm:table-cell">
+                            {isMissingRow ? (
+                              <span className="text-muted-foreground italic">{MISSING_INFO_TEXT}</span>
+                            ) : (
                               <div className="flex flex-wrap gap-1">
                                 <ExternalLinkButton href={r.sup_url} label="Website" icon={ExternalLink} />
                                 <ExternalLinkButton href={r.product_page_url} label="Product" icon={ShoppingCart} />
                                 <ExternalLinkButton href={r.spec_sheet_url} label="Spec Sheet" icon={FileText} />
+                                {!hasAnyLink && <span className="text-xs text-muted-foreground italic">{MISSING_INFO_TEXT}</span>}
                               </div>
-                            </td>
-                            <td className="px-4 py-2">
-                              <button
-                                onClick={() => handleChooseSubstitute(r.supplier_name, 1)}
-                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-                                  isChosen
+                            )}
+                          </td>
+                          <td className="px-4 py-2">
+                            <button
+                              onClick={() => !isMissingRow && handleChooseSubstitute(r.supplier_name, 1)}
+                              disabled={isMissingRow}
+                              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                                isMissingRow
+                                  ? "bg-muted text-muted-foreground cursor-not-allowed"
+                                  : isChosen
                                     ? "bg-green-100 text-green-700 ring-1 ring-green-400"
                                     : "bg-primary/10 text-primary hover:bg-primary/20"
-                                }`}
-                              >
-                                {isChosen ? <CheckCircle className="w-3 h-3" /> : <ShoppingCart className="w-3 h-3" />}
-                                {isChosen ? "Selected" : "Choose"}
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Sources / Refs */}
-                {allRefs.length > 0 && (
-                  <div className="mt-3 border rounded-lg overflow-hidden">
-                    <button
-                      onClick={() => setExpandedRefs(v => !v)}
-                      className="w-full flex items-center gap-2 px-4 py-2.5 bg-muted/30 hover:bg-muted/50 transition-colors text-sm font-medium text-left"
-                    >
-                      <BookOpen className="w-3.5 h-3.5 text-muted-foreground" />
-                      Sources ({allRefs.length})
-                      <span className="ml-auto text-muted-foreground text-xs">{expandedRefs ? "▲" : "▼"}</span>
-                    </button>
-                    {expandedRefs && (
-                      <ul className="divide-y divide-border">
-                        {allRefs.map((ref, i) => (
-                          <li key={i} className="px-4 py-2 text-xs flex items-start gap-2">
-                            <ExternalLink className="w-3 h-3 mt-0.5 shrink-0 text-muted-foreground" />
-                            <a
-                              href={ref.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-primary hover:underline break-all"
+                              }`}
                             >
-                              {ref.note || ref.url}
-                            </a>
-                          </li>
-                        ))}
-                      </ul>
+                              {isMissingRow
+                                ? <><XCircle className="w-3 h-3" />Unavailable</>
+                                : isChosen
+                                  ? <><CheckCircle className="w-3 h-3" />Selected</>
+                                  : <><ShoppingCart className="w-3 h-3" />Choose</>}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Sources / Refs */}
+              <div className="mt-3 border rounded-lg overflow-hidden">
+                <button
+                  onClick={() => setExpandedRefs((v) => !v)}
+                  className="w-full flex items-center gap-2 px-4 py-2.5 bg-muted/30 hover:bg-muted/50 transition-colors text-sm font-medium text-left"
+                >
+                  <BookOpen className="w-3.5 h-3.5 text-muted-foreground" />
+                  Sources ({allRefs.length})
+                  <span className="ml-auto text-muted-foreground text-xs">{expandedRefs ? "▲" : "▼"}</span>
+                </button>
+                {expandedRefs && (
+                  <ul className="divide-y divide-border">
+                    {allRefs.length > 0 ? allRefs.map((ref, i) => (
+                      <li key={i} className="px-4 py-2 text-xs flex items-start gap-2">
+                        <ExternalLink className="w-3 h-3 mt-0.5 shrink-0 text-muted-foreground" />
+                        <a
+                          href={ref.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary hover:underline break-all"
+                        >
+                          {ref.note || ref.url}
+                        </a>
+                      </li>
+                    )) : (
+                      <li className="px-4 py-2 text-xs text-muted-foreground italic">{MISSING_INFO_TEXT}</li>
                     )}
-                  </div>
+                  </ul>
                 )}
               </div>
-            )}
+            </div>
 
             {/* Tier 2 */}
-            {substitution.tier2.length > 0 && (
-              <div>
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                  Tier 2 — Same Function, Compliance-Compatible
-                </h3>
-                <div className="border rounded-lg overflow-hidden">
-                  <table className="w-full text-sm">
-                    <thead className="bg-muted/50">
-                      <tr>
-                        <th className="text-left px-4 py-2 font-medium">Ingredient</th>
-                        <th className="text-left px-4 py-2 font-medium hidden sm:table-cell">CAS</th>
-                        <th className="text-left px-4 py-2 font-medium">Supplier</th>
-                        <th className="text-left px-4 py-2 font-medium hidden md:table-cell">Country</th>
-                        <th className="text-left px-4 py-2 font-medium">Vegan</th>
-                        <th className="text-left px-4 py-2 font-medium">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {substitution.tier2.map((r, i) => {
-                        const isChosen = chosenSubstitute?.name === r.canonical_name && chosenSubstitute?.tier === 2;
-                        return (
-                          <tr key={`${r.cas_number}-${r.supplier_id}`} className={i % 2 === 0 ? "" : "bg-muted/20"}>
-                            <td className="px-4 py-2 font-medium">{r.canonical_name}</td>
-                            <td className="px-4 py-2 text-muted-foreground text-xs hidden sm:table-cell font-mono">{r.cas_number}</td>
-                            <td className="px-4 py-2">{r.supplier_name}</td>
-                            <td className="px-4 py-2 text-muted-foreground hidden md:table-cell">{r.country ?? "—"}</td>
-                            <td className="px-4 py-2"><ComplianceBadge value={r.vegan_status} /></td>
-                            <td className="px-4 py-2">
-                              <button
-                                onClick={() => handleChooseSubstitute(r.canonical_name, 2)}
-                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-                                  isChosen
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                Tier 2 — Same Function, Compliance-Compatible
+              </h3>
+              <div className="border rounded-lg overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50">
+                    <tr>
+                      <th className="text-left px-4 py-2 font-medium">Ingredient</th>
+                      <th className="text-left px-4 py-2 font-medium hidden sm:table-cell">CAS</th>
+                      <th className="text-left px-4 py-2 font-medium">Supplier</th>
+                      <th className="text-left px-4 py-2 font-medium hidden md:table-cell">Country</th>
+                      <th className="text-left px-4 py-2 font-medium">Vegan</th>
+                      <th className="text-left px-4 py-2 font-medium">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tier2Rows.map((r, i) => {
+                      const isMissingRow = !r;
+                      const isChosen = !isMissingRow && chosenSubstitute?.name === r.canonical_name && chosenSubstitute?.tier === 2;
+                      return (
+                        <tr key={isMissingRow ? "missing-tier2-row" : `${r.cas_number}-${r.supplier_id}-${i}`} className={i % 2 === 0 ? "" : "bg-muted/20"}>
+                          <td className="px-4 py-2 font-medium">{isMissingRow ? <span className="text-muted-foreground italic">{MISSING_INFO_TEXT}</span> : displayValue(r.canonical_name)}</td>
+                          <td className="px-4 py-2 text-muted-foreground text-xs hidden sm:table-cell font-mono">{isMissingRow ? MISSING_INFO_TEXT : displayValue(r.cas_number)}</td>
+                          <td className="px-4 py-2">{isMissingRow ? <span className="text-muted-foreground italic">{MISSING_INFO_TEXT}</span> : displayValue(r.supplier_name)}</td>
+                          <td className="px-4 py-2 text-muted-foreground hidden md:table-cell">{isMissingRow ? <span className="italic">{MISSING_INFO_TEXT}</span> : displayValue(r.country)}</td>
+                          <td className="px-4 py-2">{isMissingRow ? <span className="text-muted-foreground italic text-xs">{MISSING_INFO_TEXT}</span> : <ComplianceBadge value={r.vegan_status} />}</td>
+                          <td className="px-4 py-2">
+                            <button
+                              onClick={() => !isMissingRow && handleChooseSubstitute(r.canonical_name, 2)}
+                              disabled={isMissingRow}
+                              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                                isMissingRow
+                                  ? "bg-muted text-muted-foreground cursor-not-allowed"
+                                  : isChosen
                                     ? "bg-green-100 text-green-700 ring-1 ring-green-400"
                                     : "bg-primary/10 text-primary hover:bg-primary/20"
-                                }`}
-                              >
-                                {isChosen ? <CheckCircle className="w-3 h-3" /> : <ShoppingCart className="w-3 h-3" />}
-                                {isChosen ? "Selected" : "Choose"}
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                              }`}
+                            >
+                              {isMissingRow
+                                ? <><XCircle className="w-3 h-3" />Unavailable</>
+                                : isChosen
+                                  ? <><CheckCircle className="w-3 h-3" />Selected</>
+                                  : <><ShoppingCart className="w-3 h-3" />Choose</>}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
-            )}
+            </div>
 
             {/* AI Recommendation Reasoning Trace */}
-            {substitution.aiRecommendation && (
-              <div className="bg-card border rounded-lg shadow-sm p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-                    AI Recommendation
-                  </h3>
-                  <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-primary/10 text-primary">
-                    Tier {substitution.aiRecommendation.tier} · {Math.round(substitution.aiRecommendation.confidence * 100)}% confidence
-                  </span>
-                </div>
-                <div className="flex items-start justify-between gap-4 mb-5">
-                  <p className="text-lg font-bold">{substitution.aiRecommendation.recommendation}</p>
-                  <button
-                    onClick={() => handleChooseSubstitute(substitution.aiRecommendation!.recommendation, substitution.aiRecommendation!.tier)}
-                    className={`shrink-0 inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-                      chosenSubstitute?.name === substitution.aiRecommendation.recommendation
+            <div className="bg-card border rounded-lg shadow-sm p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+                  AI Recommendation
+                </h3>
+                <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-primary/10 text-primary">
+                  {aiRecommendation
+                    ? `Tier ${aiRecommendation.tier} · ${Math.round(aiRecommendation.confidence * 100)}% confidence`
+                    : MISSING_INFO_TEXT}
+                </span>
+              </div>
+              <div className="flex items-start justify-between gap-4 mb-5">
+                <p className="text-lg font-bold">{displayValue(aiRecommendation?.recommendation)}</p>
+                <button
+                  onClick={() => aiRecommendation && handleChooseSubstitute(aiRecommendation.recommendation, aiRecommendation.tier)}
+                  disabled={!aiRecommendation}
+                  className={`shrink-0 inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                    !aiRecommendation
+                      ? "bg-muted text-muted-foreground cursor-not-allowed"
+                      : chosenSubstitute?.name === aiRecommendation.recommendation
                         ? "bg-green-100 text-green-700 ring-1 ring-green-400"
                         : "bg-primary text-primary-foreground hover:bg-primary/90"
-                    }`}
-                  >
-                    {chosenSubstitute?.name === substitution.aiRecommendation.recommendation
-                      ? <><CheckCircle className="w-4 h-4" /> Selected</>
-                      : <><ShoppingCart className="w-4 h-4" /> Choose as Substitute</>}
-                  </button>
-                </div>
-                <div className="space-y-3 border-t pt-4">
-                  {[
-                    { label: "Functional Equivalence", key: "functional_equivalence" as const },
-                    { label: "Compliance Fit",         key: "compliance_fit" as const },
-                    { label: "Supply Risk",            key: "supply_risk" as const },
-                    { label: "Cost Impact",            key: "cost_impact" as const },
-                  ].map(({ label, key }) => {
-                    const text = substitution.aiRecommendation!.reasoning[key];
-                    if (!text) return null;
-                    return (
-                      <div key={key} className="flex gap-3 text-sm">
-                        <span className="font-semibold text-muted-foreground w-44 shrink-0">{label}</span>
-                        <span>{text}</span>
-                      </div>
-                    );
-                  })}
-                </div>
+                  }`}
+                >
+                  {!aiRecommendation
+                    ? <><XCircle className="w-4 h-4" />Unavailable</>
+                    : chosenSubstitute?.name === aiRecommendation.recommendation
+                      ? <><CheckCircle className="w-4 h-4" />Selected</>
+                      : <><ShoppingCart className="w-4 h-4" />Choose as Substitute</>}
+                </button>
               </div>
-            )}
+              <div className="space-y-3 border-t pt-4">
+                {[
+                  { label: "Functional Equivalence", key: "functional_equivalence" as const },
+                  { label: "Compliance Fit",         key: "compliance_fit" as const },
+                  { label: "Supply Risk",            key: "supply_risk" as const },
+                  { label: "Cost Impact",            key: "cost_impact" as const },
+                ].map(({ label, key }) => (
+                  <div key={key} className="flex gap-3 text-sm">
+                    <span className="font-semibold text-muted-foreground w-44 shrink-0">{label}</span>
+                    <span>{displayValue(aiRecommendation?.reasoning[key] ?? null)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           </section>
         )}
 

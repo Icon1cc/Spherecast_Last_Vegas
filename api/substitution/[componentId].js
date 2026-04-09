@@ -15,7 +15,7 @@ import { GEMINI_DEFAULT_MODEL } from "../lib/constants.js";
  * Query params:
  *   ?weights=price:7,regulatory:8,certFit:6,supplyRisk:5,functionalFit:9
  */
-export default async function handler(req, res) {
+export async function substitutionHandler(req, res) {
   if (req.method !== "GET") {
     res.setHeader("Allow", "GET");
     return res.status(405).json({ error: "Method not allowed" });
@@ -255,3 +255,5 @@ Respond ONLY with valid JSON in this exact format (no markdown, no explanation o
     if (pool) await pool.end();
   }
 }
+
+export default substitutionHandler;

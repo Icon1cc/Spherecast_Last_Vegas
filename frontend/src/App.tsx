@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import Dashboard from "./pages/Index";
 import AnalysisPage from "./pages/AnalysisPage";
+import AboutPage from "./pages/About";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -23,6 +24,7 @@ const App = () => (
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/analysis/:productId/:materialId" element={<AnalysisPage />} />
+          <Route path="/about" element={<AboutPage />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
