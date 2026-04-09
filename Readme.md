@@ -220,13 +220,15 @@ ingredient_profile (174) ── keyed by CAS number
 
 ## Running the Enrichment Pipeline
 
-The Agnes enrichment loop runs in a Claude Code session to save credits, could also run headlessly in the background. It web-searches each ingredient+supplier pair, if necessary navigates websites with playwright to find extra information and outputs structured JSONL records.
+The enrichment pipeline is an **agentic research loop** built on Claude's tool-use API. For each (ingredient, supplier) pair it autonomously: queries PubChem for canonical CAS numbers, searches regulatory databases, navigates supplier product pages with Playwright, and emits a validated `EnrichmentRecord` to JSONL.
+
+The pipeline is implemented as a structured agent prompt + tool schema — the same architecture runs interactively (Claude Code, for supervised enrichment with human spot-checks) or headlessly (Claude API with `tool_use`, scheduled via cron or triggered on new supplier ingestion). Switching modes requires no logic changes: the research steps, output schema, and idempotency guarantees are identical in both execution contexts.
 
 ```bash
 # Check progress
 python data_enrichment/backend/enrichment_status.py --summary
 
-# Start a new enrichment session (paste kickoff prompt into Claude Code)
+# Run enrichment agent (interactive mode)
 cat data_enrichment/enrichment_loop.md
 
 # After enrichment, ingest into Postgres
