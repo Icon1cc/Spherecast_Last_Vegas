@@ -96,6 +96,69 @@ function ExternalLinkButton({ href, label, icon: Icon }: { href: string | null |
   );
 }
 
+function wrapXAxisLabel(text: string, maxCharsPerLine = 14, maxLines = 3): string[] {
+  const normalized = text.trim();
+  if (!normalized) return [MISSING_INFO_TEXT];
+
+  const words = normalized.split(/\s+/);
+  const lines: string[] = [];
+  let currentLine = "";
+
+  for (const word of words) {
+    const candidate = currentLine ? `${currentLine} ${word}` : word;
+    if (candidate.length <= maxCharsPerLine) {
+      currentLine = candidate;
+      continue;
+    }
+
+    if (currentLine) lines.push(currentLine);
+    currentLine = word;
+
+    if (lines.length >= maxLines - 1) break;
+  }
+
+  if (currentLine && lines.length < maxLines) {
+    lines.push(currentLine);
+  }
+
+  if (lines.length === 0) return [normalized];
+  if (words.join(" ").length > lines.join(" ").length && lines.length === maxLines) {
+    lines[maxLines - 1] = `${lines[maxLines - 1]}...`;
+  }
+
+  return lines;
+}
+
+function SupplierAxisTick({
+  x = 0,
+  y = 0,
+  payload,
+}: {
+  x?: number;
+  y?: number;
+  payload?: { value?: string };
+}) {
+  const labelLines = wrapXAxisLabel(String(payload?.value ?? ""));
+
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <text
+        x={0}
+        y={10}
+        textAnchor="middle"
+        fill="hsl(var(--muted-foreground))"
+        fontSize={11}
+      >
+        {labelLines.map((line, index) => (
+          <tspan key={`${line}-${index}`} x={0} dy={index === 0 ? 0 : 12}>
+            {line}
+          </tspan>
+        ))}
+      </text>
+    </g>
+  );
+}
+
 const AnalysisPage = () => {
   const { productId, materialId } = useParams<{ productId: string; materialId: string }>();
   const [searchParams] = useSearchParams();
@@ -350,7 +413,14 @@ const AnalysisPage = () => {
                   <ResponsiveContainer width="100%" height={250}>
                     <BarChart data={barData}>
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                      <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                      <XAxis
+                        dataKey="name"
+                        interval={0}
+                        minTickGap={0}
+                        height={64}
+                        tickMargin={8}
+                        tick={<SupplierAxisTick />}
+                      />
                       <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
                       <Tooltip />
                       <Bar dataKey="score" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
