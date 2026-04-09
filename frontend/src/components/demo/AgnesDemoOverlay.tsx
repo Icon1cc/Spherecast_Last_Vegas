@@ -1,11 +1,11 @@
 /**
- * AgnesDemoOverlay - Full-screen overlay for Agnes Demo Mode
- * Displays animated sphere, transcript, and controls
+ * AgnesDemoOverlay - Sidebar overlay for Agnes Demo Mode
+ * Shows as a side panel while user can see the main app
  */
 
-import { memo, useEffect, useCallback } from "react";
+import { memo, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
-import { X, Mic, MicOff } from "lucide-react";
+import { X, Mic, Volume2, VolumeX } from "lucide-react";
 import AgnesSphere from "./AgnesSphere";
 import { useAgnesDemo } from "@/hooks/useAgnesDemo";
 import type { DemoPhase } from "@/types/demo";
@@ -15,41 +15,20 @@ interface AgnesDemoOverlayProps {
   onClose: () => void;
 }
 
-/**
- * Get status text for current phase
- */
 function getStatusText(phase: DemoPhase): string {
   switch (phase) {
     case "GREETING":
-      return "Initializing...";
+      return "Starting...";
     case "LISTENING":
-      return "Listening...";
+      return "Listening";
     case "THINKING":
-      return "Processing...";
+      return "Thinking";
     case "SPEAKING":
-      return "Speaking...";
+      return "Speaking";
     case "NAVIGATING":
-      return "Navigating...";
-    case "COMPLETE":
-      return "Complete";
+      return "Navigating";
     default:
       return "";
-  }
-}
-
-/**
- * Get hint text for current phase
- */
-function getHintText(phase: DemoPhase): string | null {
-  switch (phase) {
-    case "LISTENING":
-      return "Speak naturally to Agnes";
-    case "SPEAKING":
-      return "Click mic or speak to interrupt";
-    case "THINKING":
-      return "Agnes is thinking...";
-    default:
-      return null;
   }
 }
 
@@ -57,6 +36,11 @@ const AgnesDemoOverlay = memo(function AgnesDemoOverlay({
   isOpen,
   onClose,
 }: AgnesDemoOverlayProps) {
+  const bargeInTimeoutRef = useRef<number | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const micStreamRef = useRef<MediaStream | null>(null);
+
   const {
     phase,
     transcript,
@@ -77,27 +61,107 @@ const AgnesDemoOverlay = memo(function AgnesDemoOverlay({
     }
   }, [isOpen, isActive, startDemo]);
 
+  // Barge-in: Monitor mic during SPEAKING phase and auto-interrupt when user speaks
+  useEffect(() => {
+    if (phase !== "SPEAKING") {
+      // Clean up when not speaking
+      if (micStreamRef.current) {
+        micStreamRef.current.getTracks().forEach(t => t.stop());
+        micStreamRef.current = null;
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+        audioContextRef.current = null;
+      }
+      return;
+    }
+
+    // Start monitoring mic for barge-in
+    const startBargeInMonitor = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true },
+        });
+        micStreamRef.current = stream;
+
+        const AudioContextClass = window.AudioContext ||
+          (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (!AudioContextClass) return;
+
+        const audioContext = new AudioContextClass();
+        const analyser = audioContext.createAnalyser();
+        const source = audioContext.createMediaStreamSource(stream);
+
+        analyser.fftSize = 512;
+        analyser.smoothingTimeConstant = 0.3;
+        source.connect(analyser);
+
+        audioContextRef.current = audioContext;
+        analyserRef.current = analyser;
+
+        const waveform = new Uint8Array(analyser.fftSize);
+        let speechStartTime: number | null = null;
+        const BARGE_IN_THRESHOLD = 0.04; // Sensitivity for detecting user speech
+        const BARGE_IN_DURATION_MS = 300; // Must speak for 300ms to trigger interrupt
+
+        const checkForBargeIn = () => {
+          if (phase !== "SPEAKING" || !analyserRef.current) return;
+
+          analyserRef.current.getByteTimeDomainData(waveform);
+          let sum = 0;
+          for (const sample of waveform) {
+            const normalized = (sample - 128) / 128;
+            sum += normalized * normalized;
+          }
+          const rms = Math.sqrt(sum / waveform.length);
+
+          if (rms >= BARGE_IN_THRESHOLD) {
+            if (!speechStartTime) {
+              speechStartTime = performance.now();
+            } else if (performance.now() - speechStartTime >= BARGE_IN_DURATION_MS) {
+              // User has been speaking long enough - interrupt!
+              console.log("Barge-in detected, interrupting Agnes");
+              interrupt();
+              return;
+            }
+          } else {
+            speechStartTime = null;
+          }
+
+          bargeInTimeoutRef.current = window.requestAnimationFrame(checkForBargeIn);
+        };
+
+        bargeInTimeoutRef.current = window.requestAnimationFrame(checkForBargeIn);
+      } catch (err) {
+        console.warn("Could not start barge-in monitor:", err);
+      }
+    };
+
+    startBargeInMonitor();
+
+    return () => {
+      if (bargeInTimeoutRef.current) {
+        window.cancelAnimationFrame(bargeInTimeoutRef.current);
+      }
+    };
+  }, [phase, interrupt]);
+
   // Handle close
   const handleClose = useCallback(() => {
     closeDemo();
     onClose();
   }, [closeDemo, onClose]);
 
-  // Handle keyboard events
+  // Keyboard escape
   useEffect(() => {
     if (!isOpen) return;
-
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        handleClose();
-      }
+      if (e.key === "Escape") handleClose();
     };
-
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, handleClose]);
 
-  // Handle interrupt on mic click or voice detection during speech
   const handleInterrupt = useCallback(() => {
     if (phase === "SPEAKING") {
       interrupt();
@@ -107,156 +171,129 @@ const AgnesDemoOverlay = memo(function AgnesDemoOverlay({
   if (!isOpen) return null;
 
   const statusText = getStatusText(phase);
-  const hintText = getHintText(phase);
-  const lastTranscript = transcript[transcript.length - 1];
+  const lastUserMessage = [...transcript].reverse().find(t => t.role === "user");
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] overflow-hidden">
-      {/* Backdrop with blur */}
+    <>
+      {/* Semi-transparent backdrop - allows seeing content */}
       <div
-        className="absolute inset-0 bg-black/85 backdrop-blur-md animate-fade-in"
+        className="fixed inset-0 z-[90] bg-black/30 backdrop-blur-[2px] transition-opacity duration-300"
         onClick={handleClose}
       />
 
-      {/* Content */}
-      <div className="relative z-10 h-full flex flex-col items-center justify-center px-4">
-        {/* Close button */}
-        <button
-          onClick={handleClose}
-          className="absolute top-6 right-6 p-3 rounded-full bg-white/10 text-white/80 hover:bg-white/20 hover:text-white transition-all duration-200 group"
-          aria-label="Exit demo"
-        >
-          <X className="w-6 h-6 group-hover:rotate-90 transition-transform duration-200" />
-        </button>
-
-        {/* Demo title */}
-        <div className="absolute top-6 left-6">
-          <h2 className="text-white/90 text-lg font-semibold tracking-wide">
-            Agnes Demo
-          </h2>
-          <p className="text-white/50 text-sm mt-1">
-            Voice-guided experience
-          </p>
+      {/* Sidebar panel */}
+      <div className="fixed right-0 top-0 bottom-0 w-80 z-[100] bg-gradient-to-b from-slate-900 to-slate-950 border-l border-white/10 shadow-2xl flex flex-col animate-slide-in-right">
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b border-white/10">
+          <div>
+            <h2 className="text-white font-semibold">Agnes</h2>
+            <p className="text-white/50 text-xs">Voice Assistant</p>
+          </div>
+          <button
+            onClick={handleClose}
+            className="p-2 rounded-full hover:bg-white/10 text-white/60 hover:text-white transition-colors"
+            aria-label="Close"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
-        {/* Main sphere */}
-        <div className="flex-shrink-0 mb-8">
-          <AgnesSphere phase={phase} size="lg" />
-        </div>
+        {/* Sphere and status */}
+        <div className="flex flex-col items-center py-6 border-b border-white/5">
+          <AgnesSphere phase={phase} size="md" />
 
-        {/* Status indicator */}
-        {statusText && (
-          <div className="flex items-center gap-2 mb-4">
+          <div className="flex items-center gap-2 mt-4">
             {phase === "LISTENING" && (
-              <span className="relative flex h-3 w-3">
+              <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500" />
               </span>
             )}
             {phase === "THINKING" && (
-              <div className="w-3 h-3 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+              <div className="w-2 h-2 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
             )}
             {phase === "SPEAKING" && (
-              <span className="relative flex h-3 w-3">
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500 animate-pulse" />
-              </span>
+              <Volume2 className="w-4 h-4 text-green-400 animate-pulse" />
             )}
-            <span className="text-white/70 text-sm font-medium uppercase tracking-wider">
+            <span className="text-white/60 text-xs font-medium uppercase tracking-wider">
               {statusText}
             </span>
           </div>
-        )}
-
-        {/* Transcript / Current speech */}
-        <div className="max-w-2xl w-full text-center mb-8 min-h-[80px]">
-          {currentSpeech && phase === "SPEAKING" && (
-            <p className="text-white/90 text-xl leading-relaxed animate-fade-in">
-              "{currentSpeech}"
-            </p>
-          )}
-          {!currentSpeech && lastTranscript && (
-            <div className="space-y-2">
-              <p className={`text-lg leading-relaxed ${
-                lastTranscript.role === "user"
-                  ? "text-blue-300/90 italic"
-                  : "text-white/80"
-              }`}>
-                {lastTranscript.role === "user" && (
-                  <span className="text-blue-400/70 text-sm mr-2">You:</span>
-                )}
-                "{lastTranscript.text}"
-              </p>
-            </div>
-          )}
         </div>
 
-        {/* Hint text */}
-        {hintText && (
-          <p className="text-white/40 text-sm mb-6 animate-pulse">
-            {hintText}
-          </p>
-        )}
-
-        {/* Interrupt/Mic button for speaking phase */}
-        {phase === "SPEAKING" && (
-          <button
-            onClick={handleInterrupt}
-            className="flex items-center gap-2 px-6 py-3 rounded-full bg-white/10 text-white/80 hover:bg-white/20 hover:text-white transition-all duration-200 border border-white/20"
-          >
-            <Mic className="w-5 h-5" />
-            <span className="text-sm font-medium">Interrupt</span>
-          </button>
-        )}
-
-        {/* Listening indicator */}
-        {phase === "LISTENING" && (
-          <div className="flex items-center gap-2 px-6 py-3 rounded-full bg-blue-500/20 border border-blue-400/30">
-            <div className="flex items-end gap-1 h-4">
-              {[...Array(4)].map((_, i) => (
-                <div
-                  key={i}
-                  className="w-1 bg-blue-400 rounded-full animate-sound-bar"
-                  style={{
-                    animationDelay: `${i * 0.1}s`,
-                    height: "100%",
-                  }}
-                />
-              ))}
-            </div>
-            <span className="text-blue-300 text-sm font-medium ml-2">Listening</span>
-          </div>
-        )}
-
-        {/* Conversation history (scrollable, collapsed by default) */}
-        {transcript.length > 2 && (
-          <div className="absolute bottom-6 left-6 right-6 max-h-32 overflow-y-auto">
-            <div className="bg-white/5 rounded-lg p-3 backdrop-blur-sm">
-              <p className="text-white/40 text-xs mb-2 uppercase tracking-wider">
-                Conversation
+        {/* Current speech / Last message */}
+        <div className="flex-1 overflow-y-auto p-4">
+          {currentSpeech && phase === "SPEAKING" && (
+            <div className="bg-white/5 rounded-lg p-3 mb-3">
+              <p className="text-xs text-green-400/70 mb-1">Agnes</p>
+              <p className="text-white/90 text-sm leading-relaxed">
+                {currentSpeech}
               </p>
-              <div className="space-y-1">
-                {transcript.slice(-4).map((entry) => (
-                  <p
-                    key={entry.id}
-                    className={`text-xs truncate ${
-                      entry.role === "user"
-                        ? "text-blue-300/70"
-                        : "text-white/60"
-                    }`}
-                  >
-                    <span className="font-medium">
-                      {entry.role === "user" ? "You" : "Agnes"}:
-                    </span>{" "}
-                    {entry.text.substring(0, 80)}
-                    {entry.text.length > 80 && "..."}
-                  </p>
+            </div>
+          )}
+
+          {/* Transcript */}
+          <div className="space-y-2">
+            {transcript.slice(-6).map((entry) => (
+              <div
+                key={entry.id}
+                className={`rounded-lg p-2 ${
+                  entry.role === "user"
+                    ? "bg-blue-500/10 ml-4"
+                    : "bg-white/5 mr-4"
+                }`}
+              >
+                <p className={`text-xs mb-1 ${
+                  entry.role === "user" ? "text-blue-400/70" : "text-white/40"
+                }`}>
+                  {entry.role === "user" ? "You" : "Agnes"}
+                </p>
+                <p className={`text-sm ${
+                  entry.role === "user" ? "text-blue-200/90" : "text-white/70"
+                }`}>
+                  {entry.text}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Bottom controls */}
+        <div className="p-4 border-t border-white/10">
+          {phase === "SPEAKING" ? (
+            <button
+              onClick={handleInterrupt}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors"
+            >
+              <Mic className="w-4 h-4" />
+              <span className="text-sm">Tap or speak to interrupt</span>
+            </button>
+          ) : phase === "LISTENING" ? (
+            <div className="flex items-center justify-center gap-2 py-3 rounded-lg bg-blue-500/20 border border-blue-400/30">
+              <div className="flex items-end gap-0.5 h-4">
+                {[...Array(4)].map((_, i) => (
+                  <div
+                    key={i}
+                    className="w-1 bg-blue-400 rounded-full animate-sound-bar"
+                    style={{ animationDelay: `${i * 0.1}s` }}
+                  />
                 ))}
               </div>
+              <span className="text-blue-300 text-sm">Listening...</span>
             </div>
-          </div>
-        )}
+          ) : phase === "THINKING" ? (
+            <div className="flex items-center justify-center gap-2 py-3 text-white/50">
+              <div className="w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+              <span className="text-sm">Processing...</span>
+            </div>
+          ) : null}
+
+          <p className="text-center text-white/30 text-xs mt-2">
+            Press Esc to close
+          </p>
+        </div>
       </div>
-    </div>,
+    </>,
     document.body
   );
 });
