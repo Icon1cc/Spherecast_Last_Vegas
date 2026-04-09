@@ -15,14 +15,15 @@ const ELEVENLABS_STT_MODEL_ID =
   import.meta.env.VITE_ELEVENLABS_STT_MODEL_ID?.trim() ?? "scribe_v1";
 
 // Voice detection constants - tuned for reliable speech detection
-const BASE_SILENCE_THRESHOLD = 0.015;       // Lower = more sensitive to quiet speech
-const MIN_DYNAMIC_SILENCE_THRESHOLD = 0.01; // Minimum threshold floor
-const MAX_DYNAMIC_SILENCE_THRESHOLD = 0.06; // Maximum threshold ceiling
-const SILENCE_THRESHOLD_MULTIPLIER = 1.8;   // How much above ambient noise to trigger
-const NOISE_CALIBRATION_MS = 500;           // Time to calibrate ambient noise
-const SILENCE_DURATION_MS = 1200;           // How long silence before stopping (ms)
-const NO_SPEECH_TIMEOUT_MS = 10000;         // Max wait for speech to start (10s)
-const MAX_RECORDING_MS = 30000;             // Max recording duration (30s)
+const BASE_SILENCE_THRESHOLD = 0.008;       // Very low = catches quiet speech
+const MIN_DYNAMIC_SILENCE_THRESHOLD = 0.005; // Minimum threshold floor
+const MAX_DYNAMIC_SILENCE_THRESHOLD = 0.04; // Maximum threshold ceiling
+const SILENCE_THRESHOLD_MULTIPLIER = 1.5;   // How much above ambient noise to trigger
+const NOISE_CALIBRATION_MS = 300;           // Quick calibration
+const SILENCE_DURATION_MS = 1500;           // Wait 1.5s of silence before stopping
+const NO_SPEECH_TIMEOUT_MS = 15000;         // Max wait for speech to start (15s)
+const MAX_RECORDING_MS = 45000;             // Max recording duration (45s)
+const MIN_RECORDING_MS = 1500;              // Minimum recording time before allowing stop
 const TTS_CHUNK_MAX_CHARS = 180;
 const MIN_AUDIO_BYTES_FOR_STT = 4096;
 const RECORDER_MIME_CANDIDATES = [
@@ -442,6 +443,7 @@ export function useVoiceIO(options: UseVoiceIOOptions = {}): UseVoiceIOReturn {
 
         const waveform = new Uint8Array(analyser.fftSize);
         const calibrationEndAt = performance.now() + NOISE_CALIBRATION_MS;
+        const recordingStartedAt = performance.now();
         const calibrationSamples: number[] = [];
 
         const monitorAudio = (timestamp: number) => {
@@ -455,6 +457,7 @@ export function useVoiceIO(options: UseVoiceIOOptions = {}): UseVoiceIOReturn {
           }
           const rms = Math.sqrt(sum / waveform.length);
 
+          // Calibration phase - collect ambient noise samples
           if (!speechDetectedRef.current && timestamp <= calibrationEndAt) {
             calibrationSamples.push(rms);
           }
@@ -472,16 +475,21 @@ export function useVoiceIO(options: UseVoiceIOOptions = {}): UseVoiceIOReturn {
             )
           );
 
+          // Any sound above threshold = speech detected
           if (rms >= dynamicThreshold) {
             speechDetectedRef.current = true;
             silenceStartTimestampRef.current = null;
           } else if (speechDetectedRef.current) {
-            if (silenceStartTimestampRef.current === null) {
-              silenceStartTimestampRef.current = timestamp;
-            }
-            if (timestamp - silenceStartTimestampRef.current >= SILENCE_DURATION_MS) {
-              stopRecordingFromMonitor();
-              return;
+            // Only start silence timer after minimum recording time
+            const elapsedMs = timestamp - recordingStartedAt;
+            if (elapsedMs >= MIN_RECORDING_MS) {
+              if (silenceStartTimestampRef.current === null) {
+                silenceStartTimestampRef.current = timestamp;
+              }
+              if (timestamp - silenceStartTimestampRef.current >= SILENCE_DURATION_MS) {
+                stopRecordingFromMonitor();
+                return;
+              }
             }
           }
 
@@ -493,7 +501,12 @@ export function useVoiceIO(options: UseVoiceIOOptions = {}): UseVoiceIOReturn {
 
       // Timeouts
       noSpeechTimeoutRef.current = window.setTimeout(() => {
-        if (!speechDetectedRef.current) stopListening();
+        // Even if no speech detected locally, still process the audio
+        // Let ElevenLabs decide - local detection can be unreliable
+        if (mediaRecorderRef.current?.state === "recording") {
+          speechDetectedRef.current = true; // Force processing
+          stopListening();
+        }
       }, NO_SPEECH_TIMEOUT_MS);
 
       maxRecordingTimeoutRef.current = window.setTimeout(() => {
@@ -505,26 +518,25 @@ export function useVoiceIO(options: UseVoiceIOOptions = {}): UseVoiceIOReturn {
       };
 
       const handleStop = async () => {
-        const didDetectSpeech = speechDetectedRef.current;
         stopVoiceMonitor();
         stopMicrophoneTracks();
         mediaRecorderRef.current = null;
         setIsListening(false);
         options.onListeningEnd?.();
 
-        if (audioChunksRef.current.length === 0) return;
+        if (audioChunksRef.current.length === 0) {
+          options.onError?.(new Error("No audio recorded"), "stt");
+          return;
+        }
 
         setIsProcessing(true);
         try {
-          if (!didDetectSpeech) {
-            options.onError?.(new Error("No speech detected"), "stt");
-            return;
-          }
-
           const audioBlob = new Blob(audioChunksRef.current, {
             type: audioChunksRef.current[0]?.type || recordingMimeTypeRef.current || "audio/webm",
           });
 
+          // Always send to ElevenLabs - let the server decide if there's speech
+          // Don't rely on local speech detection which can be unreliable
           if (audioBlob.size < MIN_AUDIO_BYTES_FOR_STT) {
             options.onError?.(new Error("Recording too short. Please speak a bit longer."), "stt");
             return;

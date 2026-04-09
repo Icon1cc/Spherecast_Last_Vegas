@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { X, Send, Mic, MicOff, Plus, Volume2, VolumeX } from "lucide-react";
+import { X, Send, Mic, MicOff, Plus, Volume2, VolumeX, Headphones } from "lucide-react";
 import { format } from "date-fns";
 import type { ChatMessage, ChatSession } from "@/types/chat";
 import { sendChatMessage } from "@/lib/api";
@@ -9,7 +9,6 @@ interface ChatPanelProps {
   onClose: () => void;
 }
 
-const AGNES_INITIALS = "AG";
 const AGNES_GREETING = "Hello I am Agnes, how can I help you today";
 const DEFAULT_ELEVENLABS_VOICE_ID = "s3TPKV1kjDlVtZbl4Ksh";
 const ELEVENLABS_VOICE_ID =
@@ -741,8 +740,8 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
         {/* Header */}
         <header className="h-14 bg-header flex items-center justify-between px-4 shrink-0">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center ring-1 ring-header-foreground/30 text-xs font-bold">
-              {AGNES_INITIALS}
+            <div className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center ring-1 ring-header-foreground/30">
+              <Headphones className="w-4 h-4" />
             </div>
             <span className="text-header-foreground font-semibold text-sm">Agnes Assistant</span>
           </div>
@@ -798,8 +797,8 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
                     }`}
                   >
                     {msg.role === "assistant" && (
-                      <div className="w-6 h-6 rounded-full bg-black text-white flex items-center justify-center shrink-0 mt-0.5 ring-1 ring-border text-[10px] font-bold">
-                        {AGNES_INITIALS}
+                      <div className="w-6 h-6 rounded-full bg-black text-white flex items-center justify-center shrink-0 mt-0.5 ring-1 ring-border">
+                        <Headphones className="w-3 h-3" />
                       </div>
                     )}
                     <div>
