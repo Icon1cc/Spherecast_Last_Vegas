@@ -1,5 +1,6 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import { Search, Loader2, AlertCircle, Sparkles } from "lucide-react";
 import Layout from "@/components/Layout";
 import ChatIcon from "@/components/ChatIcon";
@@ -16,6 +17,7 @@ const Dashboard = () => {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [demoOpen, setDemoOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // Fetch products from API
   const {
@@ -44,6 +46,21 @@ const Dashboard = () => {
   const products = productsData?.products ?? [];
   const totalPages = productsData?.pagination.totalPages ?? 1;
   const total = productsData?.pagination.total ?? 0;
+
+  // Auto-open product modal when Agnes navigates to /?product=<id>
+  // Use a synthetic object — BOM modal only needs product.id to fire the query.
+  // Don't search in products[] which may be on a different page.
+  useEffect(() => {
+    const productIdParam = searchParams.get("product");
+    const productNameParam = searchParams.get("name");
+    if (!productIdParam || selectedProduct) return;
+    setSelectedProduct({
+      id: parseInt(productIdParam, 10),
+      name: productNameParam ?? `Product ${productIdParam}`,
+      company: "",
+    });
+    setSearchParams({}, { replace: true });
+  }, [searchParams, selectedProduct, setSearchParams]);
 
   const handleSearchChange = useCallback((value: string) => {
     setSearch(value);

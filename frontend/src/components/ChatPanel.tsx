@@ -476,7 +476,7 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
         const currentSession = sessions.find((s) => s.id === sessionId);
         const history = currentSession ? buildChatHistory(currentSession.messages) : [];
 
-        // Voice interactions use the demo prompt: brief replies + nav commands + real product IDs
+        // isDemo=true only for voice (terse + nav); text uses full prompt (also has nav commands)
         const response = await sendChatMessage(userText, history, speakResponse, pageContext);
         // Parse and execute any navigation commands; get clean text for display + TTS
         const cleanText = parseNavCommands(response.response);
