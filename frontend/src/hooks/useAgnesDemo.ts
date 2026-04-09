@@ -79,7 +79,7 @@ function demoReducer(state: DemoState, action: DemoAction): DemoState {
       };
       return {
         ...state,
-        phase: action.payload.navigation ? "SPEAKING" : "SPEAKING",
+        phase: "SPEAKING",
         currentSpeech: action.payload.speech,
         transcript: [...state.transcript, newTranscript],
         navigationTarget: action.payload.navigation ?? null,
