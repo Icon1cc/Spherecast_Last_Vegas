@@ -6,7 +6,7 @@ const CONTACTS = [
   { name: "Florian Sprick", email: "florian.sprick@hotmail.com" },
   { name: "Vinayak Joshi", email: "vinayakjoshi2001@gmail.com" },
   { name: "Gonzalo Baonza", email: "Gonzalobaonza@gmail.com" },
-  { name: "Anton", email: null },
+  { name: "Anton Kantsemal", email: "str4tum@gmail.com" },
 ] as const;
 
 const AboutPage = () => {
