@@ -7,7 +7,7 @@ An AI-powered supply chain decision-support system for CPG (Consumer Packaged Go
 Give Spherecast's AI Supply Chain Manager **"Agnes"** raw material superpowers:
 - Find **interchangeable components** (ingredients, packaging, labels)
 - Determine **quality and compliance standards** for replacements
-- Recommend **best sourcing options** with clear reasoning
+- Recommend **best sourcing options** with clear reasoning and evidence
 
 ## Deployment
 
@@ -19,13 +19,14 @@ This app is deployed on **Vercel**. Push to main branch to deploy.
 |-----------|------------|
 | Frontend | React 18 + TypeScript + Vite |
 | UI Components | Radix UI + Tailwind CSS |
-| Backend | Vercel Serverless Functions |
-| Database | PostgreSQL (Supabase) |
+| Backend | Vercel Serverless Functions (Node.js) |
+| Database | PostgreSQL (Supabase / Vercel Postgres) |
 | AI/LLM | Google Gemini 2.5 Flash |
 | Voice | ElevenLabs TTS + STT |
 | Charts | Recharts |
+| Enrichment Pipeline | Python (data_enrichment/) + Claude Code + Playwright MCP |
 
-## Features Implemented
+## Features
 
 ### Dashboard (Product Catalog)
 - Browse 149 finished goods from 61 CPG brands
@@ -39,23 +40,32 @@ This app is deployed on **Vercel**. Push to main branch to deploy.
 - Navigate to detailed analysis
 
 ### Analysis Page
-- AI-powered sourcing recommendations
+- AI-powered supplier recommendations backed by real enrichment data
 - Supplier comparison charts (Bar + Radar)
-- Interactive parameter sliders:
-  - Price Priority (1-10)
-  - Quality Priority (1-10)
-  - Compliance Priority (1-10)
-  - Supplier Consolidation (1-10)
-  - Lead Time Priority (1-10)
-- Confidence scoring with reasoning
+- **5 criteria sliders aligned to actual enrichment fields:**
+  - Price / Cost (backed by `supplier_product.price_per_unit`)
+  - Regulatory Compliance (backed by `ingredient_profile.market_ban_eu/us`)
+  - Certification Fit (vegan/halal/kosher/non-GMO/organic match)
+  - Supply Risk (patent lock, single manufacturer, geographic diversity)
+  - Functional Fit (functional role, bioequivalence)
+- Gemini reasoning with enrichment context (not just 50-word generic output)
+
+### Tiered Substitution Pipeline
+Three tiers of substitution candidates per ingredient:
+- **Tier 1** — Same molecule (CAS), alternative suppliers already in DB
+- **Tier 2** — Same functional role, compliance-compatible, different molecule
+- **Tier 3** — Gemini AI reasoning with structured explanation trace:
+  - Functional equivalence
+  - Compliance fit
+  - Supply risk assessment
+  - Cost impact
 
 ### Voice-Enabled Chat (Jarvis)
 - Two-way voice conversation using ElevenLabs
 - Speech-to-Text (STT) with scribe_v1 model
 - Text-to-Speech (TTS) with multilingual v2
 - Auto-stop recording on silence detection (900ms)
-- Greeting spoken on first mic click per session
-- Gemini-powered AI responses
+- Gemini-powered AI responses with markdown rendering
 - Chat history with multiple sessions
 
 ## Database Schema
@@ -69,63 +79,131 @@ product (1,025)├── finished-good (149)
 bom (149) ────► bom_component (1,528)
 
 supplier (40) ── supplier_product (1,633)
+                  └── enriched: country, price, certifications (418 rows)
+
+component_normalized (876) ── raw_product_id → cas_number
+                               └── cas_number linked: 418 rows
+
+ingredient_profile (281) ── keyed by CAS number
+  cas_number, canonical_name, functional_role, patent_lock,
+  market_ban_eu/us, vegan/halal/kosher/non_gmo/organic status,
+  allergen_flags, label_form_claim
 ```
 
-**AI-Populated Tables** (hackathon deliverables):
-- `component_normalized` - Standardized ingredient names
-- `substitution_candidate` - Interchangeable components
-- `external_evidence` - Web-sourced compliance data
-- `compliance_verdict` - Regulatory check results
-- `sourcing_recommendation` - Final recommendations
+**AI-Populated Tables:**
+- `ingredient_profile` — compliance facts per compound (from Agnes enrichment pipeline)
+- `component_normalized` — slug → CAS bridge per product row
+- `substitution_candidate` — AI-generated substitution output
+- `compliance_verdict` — per-candidate regulatory analysis
+- `sourcing_recommendation` — per-BOM sourcing recommendations
 
 ## Project Structure
 
 ```
 .
-├── api/                        # Vercel serverless functions
+├── api/                            # Vercel serverless functions
 │   ├── lib/
-│   │   └── db.js               # Shared database connection
-│   ├── elevenlabs/
-│   │   ├── tts.js              # Text-to-speech
-│   │   └── stt.js              # Speech-to-text
-│   ├── chat/
-│   │   └── message.js          # Gemini chat API
+│   │   ├── db.js                   # Shared database pool
+│   │   ├── constants.js            # All magic values centralized
+│   │   ├── validation.js           # Input validation utilities
+│   │   └── errors.js               # DB error handling
+│   ├── analysis/
+│   │   └── component.js            # Supplier analysis (enrichment-aware)
+│   ├── substitution/
+│   │   └── [componentId].js        # 3-tier substitution + Gemini trace
 │   ├── products/
-│   │   ├── index.js            # List products
-│   │   └── [id]/
-│   │       └── bom.js          # Get BOM components
-│   └── analysis/
-│       └── component.js        # Supplier analysis
-├── frontend/                   # React application
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── ChatPanel.tsx   # Voice chat interface
-│   │   │   ├── ChatIcon.tsx    # Floating chat button
-│   │   │   └── RawMaterialsModal.tsx
-│   │   ├── pages/
-│   │   │   ├── Index.tsx       # Dashboard
-│   │   │   └── AnalysisPage.tsx
-│   │   └── lib/
-│   │       └── api.ts          # API client
-│   └── vite.config.ts
-├── backend/                    # Scripts & utilities
+│   │   ├── index.js                # List finished goods
+│   │   └── bom.js                  # Get BOM components
+│   ├── chat/
+│   │   └── message.js              # Jarvis AI chat
+│   └── elevenlabs/
+│       ├── tts.js                  # Text-to-speech
+│       └── stt.js                  # Speech-to-text
+├── frontend/                       # React application
+│   └── src/
+│       ├── components/
+│       │   ├── ChatPanel.tsx        # Voice chat interface
+│       │   └── RawMaterialsModal.tsx
+│       ├── pages/
+│       │   ├── Index.tsx            # Dashboard
+│       │   └── AnalysisPage.tsx     # Analysis + substitution tiers
+│       └── lib/
+│           └── api.ts               # Typed API client
+├── data_enrichment/                # Agnes enrichment pipeline (Python)
+│   ├── backend/
+│   │   ├── next_enrichment.py       # Generate enrichment prompts
+│   │   ├── append_enrichment.py     # Append results to JSONL
+│   │   ├── enrichment_status.py     # Progress tracking
+│   │   ├── schemas.py               # Pydantic schema (EnrichmentRecord)
+│   │   └── mock_enrichment.json     # Example output
+│   └── docs/
+│       └── scraping_and_ingestion.md
+├── backend/                        # Node.js scripts
 │   └── scripts/
-│       └── migrate-sqlite-to-postgres.mjs
+│       ├── migrate-sqlite-to-postgres.mjs  # SQLite → Postgres migration
+│       └── ingest_enrichments.mjs          # JSONL → Postgres ingest
+├── migrations/
+│   ├── 001_enrichment_columns.sql   # SQLite enrichment columns
+│   └── 002_enrichment_postgres.sql  # Postgres enrichment schema
+├── enrichments/
+│   └── enrichments.jsonl            # 305 enriched records (137 unique pairs)
+├── knowledge_base/                  # Agnes domain knowledge (11 files)
+├── prompts/
+│   └── enrichment_loop.md           # Claude Code enrichment kickoff prompt
 ├── data/
-│   └── db.sqlite               # Source database
-├── docs/
-│   ├── FULL_IMPLEMENTATION_SPEC.md
-│   ├── IMPLEMENTATION_GUIDE.md
-│   ├── DATA_ANALYSIS.md
-│   └── NEXT_STEPS.md
-├── challenge-info/             # Hackathon requirements
-├── vercel.json                 # Vercel configuration
-└── .env                        # Environment variables
+│   └── db.sqlite                    # Source SQLite database
+└── vercel.json                      # Vercel configuration
+```
+
+## API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/products` | List finished goods with pagination + search |
+| GET | `/api/products/bom?id=:id` | Get BOM components |
+| POST | `/api/analysis/component` | Supplier analysis (enrichment-aware) |
+| GET | `/api/substitution/:componentId` | 3-tier substitution candidates + AI trace |
+| POST | `/api/chat/message` | Jarvis AI assistant |
+| POST | `/api/elevenlabs/tts` | Text-to-speech |
+| POST | `/api/elevenlabs/stt` | Speech-to-text |
+
+## Running the Enrichment Pipeline
+
+The Agnes enrichment loop runs in Claude Code and web-searches each ingredient+supplier pair:
+
+```bash
+# Check progress
+python data_enrichment/backend/enrichment_status.py --summary
+
+# Run enrichment loop (paste kickoff prompt into Claude Code session)
+cat prompts/enrichment_loop.md
+
+# After enrichment, ingest into Postgres
+NODE_TLS_REJECT_UNAUTHORIZED=0 node backend/scripts/ingest_enrichments.mjs
+```
+
+Current coverage: **305 records / 655 target pairs** (~47%) with 281 unique CAS numbers resolved.
+
+## Local Development
+
+```bash
+# Install dependencies
+cd frontend && npm install
+cd ../api && npm install
+
+# Set environment variables (copy and fill)
+cp .env.example .env
+
+# Run frontend dev server (proxies API calls)
+cd frontend && npm run dev
+# → http://localhost:5173
+
+# Deploy via Vercel CLI
+vercel dev
+# → http://localhost:3000
 ```
 
 ## Environment Variables
-
-Set these in Vercel dashboard (Settings > Environment Variables):
 
 ```env
 # Gemini AI
@@ -137,20 +215,10 @@ VITE_ELEVENLABS_VOICE_ID=s3TPKV1kjDlVtZbl4Ksh
 VITE_ELEVENLABS_TTS_MODEL_ID=eleven_multilingual_v2
 VITE_ELEVENLABS_STT_MODEL_ID=scribe_v1
 
-# PostgreSQL (Supabase)
+# PostgreSQL (Supabase / Vercel Postgres)
 POSTGRES_URL=postgres://...
+POSTGRES_SSL_REJECT_UNAUTHORIZED=false
 ```
-
-## API Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/products` | List products with pagination |
-| GET | `/api/products/:id/bom` | Get BOM components |
-| POST | `/api/chat/message` | Send message to Gemini |
-| POST | `/api/analysis/component` | Analyze supplier options |
-| POST | `/api/elevenlabs/tts` | Text-to-speech |
-| POST | `/api/elevenlabs/stt` | Speech-to-text |
 
 ## Data Statistics
 
@@ -162,24 +230,8 @@ POSTGRES_URL=postgres://...
 | Suppliers | 40 |
 | Supplier-Product Links | 1,633 |
 | BOM Components | 1,528 |
-
-**Top Suppliers by Coverage:**
-- Prinova USA: 408 products
-- PureBulk: 316 products
-- Jost Chemical: 191 products
-
-## Judging Criteria Alignment
-
-| Criterion | Implementation |
-|-----------|----------------|
-| Practical Usefulness | Real product data, actionable recommendations |
-| Strong Reasoning | Gemini provides evidence-based analysis |
-| Trustworthiness | Confidence scores, transparent methodology |
-| External Data | Extensible framework for web enrichment |
-| Substitution Logic | Category-based + supplier overlap analysis |
-| Compliance Logic | Weighted scoring across 5 dimensions |
-| Recommendations | Ranked suppliers with reasoning |
-| Creativity | Voice-enabled AI assistant |
+| Enriched ingredient profiles | 281 unique CAS numbers |
+| Enriched supplier offers | 418 supplier_product rows |
 
 ## License
 

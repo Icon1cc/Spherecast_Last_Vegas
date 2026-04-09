@@ -90,6 +90,13 @@ export const ANALYSIS_ALTERNATIVE_DEGRADATION = 0.07;
 export const ANALYSIS_MAX_ALTERNATIVES = 3;
 
 // =============================================================================
+// Analysis Weight Keys (aligned to enrichment data)
+// =============================================================================
+
+/** Weight keys for analysis sliders — must match frontend SLIDER_CONFIG */
+export const ANALYSIS_WEIGHT_KEYS = ["price", "regulatory", "certFit", "supplyRisk", "functionalFit"];
+
+// =============================================================================
 // HTTP Headers
 // =============================================================================
 
@@ -173,6 +180,7 @@ export default {
   ANALYSIS_SCORE_INCREMENT,
   ANALYSIS_ALTERNATIVE_DEGRADATION,
   ANALYSIS_MAX_ALTERNATIVES,
+  ANALYSIS_WEIGHT_KEYS,
 
   // HTTP
   CACHE_CONTROL_HEADER,

@@ -6,12 +6,15 @@ import {
   Save,
   ChevronRight,
   DollarSign,
-  Star,
-  CheckCircle,
-  Link2,
-  Clock,
+  ShieldCheck,
+  Award,
+  AlertTriangle,
+  Beaker,
   Loader2,
   AlertCircle,
+  CheckCircle,
+  XCircle,
+  HelpCircle,
 } from "lucide-react";
 import {
   BarChart,
@@ -31,23 +34,32 @@ import { toast } from "sonner";
 import Layout from "@/components/Layout";
 import ChatIcon from "@/components/ChatIcon";
 import ChatPanel from "@/components/ChatPanel";
-import { getComponentAnalysis, type AnalysisWeights, type AnalysisResponse } from "@/lib/api";
+import { getComponentAnalysis, getSubstitutionCandidates, type AnalysisWeights, type AnalysisResponse, type SubstitutionResponse } from "@/lib/api";
 
 const SLIDER_CONFIG = [
-  { key: "price", label: "Price Priority", icon: DollarSign },
-  { key: "quality", label: "Quality Priority", icon: Star },
-  { key: "compliance", label: "Compliance Priority", icon: CheckCircle },
-  { key: "consolidation", label: "Supplier Consolidation", icon: Link2 },
-  { key: "leadTime", label: "Lead Time Priority", icon: Clock },
+  { key: "price",        label: "Price / Cost",            icon: DollarSign,   tooltip: "Favour lower-cost suppliers and ingredients" },
+  { key: "regulatory",  label: "Regulatory Compliance",   icon: ShieldCheck,  tooltip: "Weight EU/US market permit status" },
+  { key: "certFit",     label: "Certification Fit",        icon: Award,        tooltip: "Vegan, halal, kosher, non-GMO, organic match" },
+  { key: "supplyRisk",  label: "Supply Risk",              icon: AlertTriangle,tooltip: "Single-manufacturer, patent-lock, geographic diversity" },
+  { key: "functionalFit", label: "Functional Fit",         icon: Beaker,       tooltip: "Same functional role and bioequivalence" },
 ] as const;
 
 const DEFAULT_WEIGHTS: AnalysisWeights = {
   price: 5,
-  quality: 5,
-  compliance: 5,
-  consolidation: 5,
-  leadTime: 5,
+  regulatory: 5,
+  certFit: 5,
+  supplyRisk: 5,
+  functionalFit: 5,
 };
+
+function ComplianceBadge({ value }: { value: string | null | undefined }) {
+  if (!value || value === "unknown") return <span className="text-muted-foreground text-xs">—</span>;
+  if (value === "yes" || value === "permitted" || value === "certified" || value === "compliant")
+    return <span className="inline-flex items-center gap-1 text-xs text-green-600"><CheckCircle className="w-3 h-3" />{value}</span>;
+  if (value === "no" || value === "banned" || value === "non_compliant")
+    return <span className="inline-flex items-center gap-1 text-xs text-red-500"><XCircle className="w-3 h-3" />{value}</span>;
+  return <span className="inline-flex items-center gap-1 text-xs text-yellow-600"><HelpCircle className="w-3 h-3" />{value}</span>;
+}
 
 const AnalysisPage = () => {
   const { productId, materialId } = useParams<{ productId: string; materialId: string }>();
@@ -60,7 +72,7 @@ const AnalysisPage = () => {
 
   const componentId = parseInt(materialId || "0", 10);
 
-  // Fetch analysis from real API
+  // Fetch supplier analysis from real API
   const {
     data: analysis,
     isLoading,
@@ -74,9 +86,20 @@ const AnalysisPage = () => {
     staleTime: 30000,
   });
 
+  // Fetch substitution candidates (separate query, weights passed for AI ranking)
+  const {
+    data: substitution,
+    isLoading: subLoading,
+  } = useQuery<SubstitutionResponse>({
+    queryKey: ["substitution", componentId, weights],
+    queryFn: () => getSubstitutionCandidates(componentId, weights),
+    enabled: componentId > 0,
+    staleTime: 60000,
+  });
+
   // Weight keys for slider mapping
   const sliderKeys: (keyof AnalysisWeights)[] = useMemo(
-    () => ["price", "quality", "compliance", "consolidation", "leadTime"],
+    () => ["price", "regulatory", "certFit", "supplyRisk", "functionalFit"],
     []
   );
 
@@ -102,16 +125,16 @@ const AnalysisPage = () => {
   const radarData = useMemo(() => {
     if (!analysis) return [];
     return [
-      { metric: "Price", value: analysis.metrics.price },
-      { metric: "Quality", value: analysis.metrics.quality },
-      { metric: "Compliance", value: analysis.metrics.compliance },
-      { metric: "Lead Time", value: analysis.metrics.leadTime },
-      { metric: "Consolidation", value: analysis.metrics.consolidation },
+      { metric: "Price",        value: analysis.metrics.price },
+      { metric: "Regulatory",   value: analysis.metrics.regulatory },
+      { metric: "Cert Fit",     value: analysis.metrics.certFit },
+      { metric: "Supply Risk",  value: analysis.metrics.supplyRisk },
+      { metric: "Funct. Fit",   value: analysis.metrics.functionalFit },
     ];
   }, [analysis]);
 
   const updateSlider = useCallback((index: number, value: number) => {
-    const keys: (keyof AnalysisWeights)[] = ["price", "quality", "compliance", "consolidation", "leadTime"];
+    const keys: (keyof AnalysisWeights)[] = ["price", "regulatory", "certFit", "supplyRisk", "functionalFit"];
     const key = keys[index];
     setWeights((prev) => ({
       ...prev,
@@ -272,6 +295,136 @@ const AnalysisPage = () => {
               </div>
             )}
           </>
+        )}
+
+        {/* Substitution Candidates */}
+        {subLoading && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Loading substitution candidates...
+          </div>
+        )}
+
+        {substitution && (
+          <section className="mb-8 space-y-6">
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+              Substitution Candidates
+            </h2>
+
+            {/* Compliance Profile */}
+            {substitution.complianceProfile && substitution.component.cas_number && (
+              <div className="bg-muted/40 rounded-lg p-4 text-sm grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div><span className="text-muted-foreground text-xs block">Vegan</span><ComplianceBadge value={substitution.complianceProfile.vegan_status} /></div>
+                <div><span className="text-muted-foreground text-xs block">Halal</span><ComplianceBadge value={substitution.complianceProfile.halal_status} /></div>
+                <div><span className="text-muted-foreground text-xs block">EU Market</span><ComplianceBadge value={substitution.complianceProfile.market_ban_eu} /></div>
+                <div><span className="text-muted-foreground text-xs block">Patent Lock</span><ComplianceBadge value={substitution.complianceProfile.patent_lock === "yes" ? "no" : substitution.complianceProfile.patent_lock === "no" ? "yes" : substitution.complianceProfile.patent_lock} /></div>
+              </div>
+            )}
+
+            {!substitution.component.cas_number && (
+              <p className="text-sm text-muted-foreground italic">
+                No enrichment data yet for this ingredient — run the Agnes enrichment loop to enable substitution analysis.
+              </p>
+            )}
+
+            {/* Tier 1 */}
+            {substitution.tier1.length > 0 && (
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                  Tier 1 — Same Molecule, Alternative Suppliers
+                </h3>
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/50">
+                      <tr>
+                        <th className="text-left px-4 py-2 font-medium">Supplier</th>
+                        <th className="text-left px-4 py-2 font-medium">Country</th>
+                        <th className="text-left px-4 py-2 font-medium">Price/unit</th>
+                        <th className="text-left px-4 py-2 font-medium hidden sm:table-cell">Certifications</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {substitution.tier1.map((r, i) => (
+                        <tr key={r.supplier_id} className={i % 2 === 0 ? "" : "bg-muted/20"}>
+                          <td className="px-4 py-2 font-medium">{r.supplier_name}</td>
+                          <td className="px-4 py-2 text-muted-foreground">{r.country ?? "—"}</td>
+                          <td className="px-4 py-2">{r.price_per_unit != null ? `$${r.price_per_unit}` : "—"}</td>
+                          <td className="px-4 py-2 hidden sm:table-cell text-muted-foreground text-xs">
+                            {r.certifications ? Object.entries(r.certifications).map(([k, v]) => `${k}:${v}`).join(", ") : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Tier 2 */}
+            {substitution.tier2.length > 0 && (
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                  Tier 2 — Same Function, Compliance-Compatible
+                </h3>
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/50">
+                      <tr>
+                        <th className="text-left px-4 py-2 font-medium">Ingredient</th>
+                        <th className="text-left px-4 py-2 font-medium hidden sm:table-cell">CAS</th>
+                        <th className="text-left px-4 py-2 font-medium">Supplier</th>
+                        <th className="text-left px-4 py-2 font-medium">Country</th>
+                        <th className="text-left px-4 py-2 font-medium">Vegan</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {substitution.tier2.map((r, i) => (
+                        <tr key={`${r.cas_number}-${r.supplier_id}`} className={i % 2 === 0 ? "" : "bg-muted/20"}>
+                          <td className="px-4 py-2 font-medium">{r.canonical_name}</td>
+                          <td className="px-4 py-2 text-muted-foreground text-xs hidden sm:table-cell">{r.cas_number}</td>
+                          <td className="px-4 py-2">{r.supplier_name}</td>
+                          <td className="px-4 py-2 text-muted-foreground">{r.country ?? "—"}</td>
+                          <td className="px-4 py-2"><ComplianceBadge value={r.vegan_status} /></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* AI Recommendation Reasoning Trace */}
+            {substitution.aiRecommendation && (
+              <div className="bg-card border rounded-lg shadow-sm p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+                    AI Recommendation
+                  </h3>
+                  <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-primary/10 text-primary">
+                    Tier {substitution.aiRecommendation.tier} · {Math.round(substitution.aiRecommendation.confidence * 100)}% confidence
+                  </span>
+                </div>
+                <p className="text-lg font-bold mb-4">{substitution.aiRecommendation.recommendation}</p>
+                <div className="space-y-3">
+                  {[
+                    { label: "Functional Equivalence", key: "functional_equivalence" as const },
+                    { label: "Compliance Fit",         key: "compliance_fit" as const },
+                    { label: "Supply Risk",            key: "supply_risk" as const },
+                    { label: "Cost Impact",            key: "cost_impact" as const },
+                  ].map(({ label, key }) => {
+                    const text = substitution.aiRecommendation!.reasoning[key];
+                    if (!text) return null;
+                    return (
+                      <div key={key} className="flex gap-3 text-sm">
+                        <span className="font-medium text-muted-foreground w-40 shrink-0">{label}</span>
+                        <span>{text}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </section>
         )}
 
         {/* Parameter Sliders - Always visible */}

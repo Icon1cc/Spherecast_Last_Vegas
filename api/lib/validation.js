@@ -88,7 +88,7 @@ export function validateAnalysisWeights(weights) {
     return { valid: false, weights: null, error: "Weights object is required" };
   }
 
-  const requiredFields = ["price", "quality", "compliance", "consolidation", "leadTime"];
+  const requiredFields = ["price", "regulatory", "certFit", "supplyRisk", "functionalFit"];
   const normalizedWeights = {};
 
   for (const field of requiredFields) {

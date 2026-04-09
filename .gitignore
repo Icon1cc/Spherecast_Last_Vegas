@@ -1,3 +1,5 @@
+.playwright-mcp/
+.claude/
 # Keep this file tracked
 !.gitignore
 

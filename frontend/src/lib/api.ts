@@ -35,10 +35,10 @@ export interface ChatResponse {
 
 export interface AnalysisWeights {
   price: number;
-  quality: number;
-  compliance: number;
-  consolidation: number;
-  leadTime: number;
+  regulatory: number;
+  certFit: number;
+  supplyRisk: number;
+  functionalFit: number;
 }
 
 export interface Supplier {
@@ -122,6 +122,69 @@ export async function sendChatMessage(
   return response.json();
 }
 
+export interface SubstitutionTier1 {
+  supplier_id: number;
+  supplier_name: string;
+  country: string | null;
+  region: string | null;
+  price_per_unit: number | null;
+  price_unit: string | null;
+  certifications: Record<string, string> | null;
+  sup_url: string | null;
+  product_page_url: string | null;
+}
+
+export interface SubstitutionTier2 {
+  cas_number: string;
+  canonical_name: string;
+  vegan_status: string | null;
+  halal_status: string | null;
+  market_ban_eu: string | null;
+  market_ban_us: string | null;
+  patent_lock: string | null;
+  supplier_id: number;
+  supplier_name: string;
+  country: string | null;
+  price_per_unit: number | null;
+  certifications: Record<string, string> | null;
+}
+
+export interface SubstitutionReasoning {
+  functional_equivalence: string;
+  compliance_fit: string;
+  supply_risk: string;
+  cost_impact: string | null;
+}
+
+export interface SubstitutionResponse {
+  component: {
+    id: number;
+    name: string;
+    cas_number: string | null;
+    canonical_name: string | null;
+    functional_role: string | null;
+  };
+  complianceProfile: {
+    vegan_status: string | null;
+    vegetarian_status: string | null;
+    halal_status: string | null;
+    kosher_status: string | null;
+    market_ban_eu: string | null;
+    market_ban_us: string | null;
+    patent_lock: string | null;
+    single_manufacturer: string | null;
+  };
+  tier1: SubstitutionTier1[];
+  tier2: SubstitutionTier2[];
+  aiRecommendation: {
+    recommendation: string;
+    tier: number;
+    confidence: number;
+    reasoning: SubstitutionReasoning;
+  } | null;
+  weights: AnalysisWeights;
+}
+
 // Analyze component suppliers with weighted scoring
 export async function getComponentAnalysis(
   componentId: number,
@@ -135,6 +198,22 @@ export async function getComponentAnalysis(
 
   if (!response.ok) {
     throw await buildApiError(response, "Failed to analyze component");
+  }
+  return response.json();
+}
+
+// Fetch tiered substitution candidates for a component
+export async function getSubstitutionCandidates(
+  componentId: number,
+  weights?: Partial<AnalysisWeights>
+): Promise<SubstitutionResponse> {
+  const weightsParam = weights
+    ? Object.entries(weights).map(([k, v]) => `${k}:${v}`).join(",")
+    : "";
+  const url = `/api/substitution/${componentId}${weightsParam ? `?weights=${weightsParam}` : ""}`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw await buildApiError(response, "Failed to fetch substitution candidates");
   }
   return response.json();
 }
