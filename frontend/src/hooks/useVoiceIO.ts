@@ -260,35 +260,15 @@ export function useVoiceIO(options: UseVoiceIOOptions = {}): UseVoiceIOReturn {
    * Transcribe audio blob using ElevenLabs STT
    */
   const transcribeAudio = useCallback(async (audioBlob: Blob): Promise<string> => {
-<<<<<<< Updated upstream
-    console.log("[VoiceIO] Transcribing audio, original type:", audioBlob.type, "size:", audioBlob.size);
-
-    // Always try to transcode to WAV for better compatibility with ElevenLabs
-    let uploadBlob = audioBlob;
-    let extension = "webm";
-
-    const transcoded = await transcodeToWavIfPossible(audioBlob);
-    if (transcoded) {
-      console.log("[VoiceIO] Successfully transcoded to WAV, size:", transcoded.size);
-      uploadBlob = transcoded;
-      extension = "wav";
-    } else {
-      console.log("[VoiceIO] WAV transcoding failed, using original format");
-      extension = extensionForMimeType(audioBlob.type || "audio/webm");
-    }
-
-    const formData = new FormData();
-    formData.append("file", uploadBlob, `agnes-input.${extension}`);
-=======
     // Send the native recorded format directly — ElevenLabs Scribe accepts webm/ogg/mp4 natively.
     // WAV transcoding via AudioContext.decodeAudioData was unreliable across browsers and
     // produced invalid files on codec mismatch, causing 400 errors and infinite retry loops.
     const mimeType = audioBlob.type || recordingMimeTypeRef.current || "audio/webm";
     const extension = extensionForMimeType(mimeType);
+    console.log("[VoiceIO] Transcribing audio, type:", mimeType, "size:", audioBlob.size, "ext:", extension);
 
     const formData = new FormData();
     formData.append("file", audioBlob, `agnes-input.${extension}`);
->>>>>>> Stashed changes
     formData.append("model_id", ELEVENLABS_STT_MODEL_ID);
 
     console.log("[VoiceIO] Sending to STT API, filename:", `agnes-input.${extension}`);
