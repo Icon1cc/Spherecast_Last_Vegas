@@ -195,6 +195,7 @@ ingredient_profile (174) ── keyed by CAS number
 │       └── index.html               # Simple status UI
 ├── backend/                        # Node.js ingestion scripts
 │   └── scripts/
+│       ├── migrate-sqlite-to-postgres.mjs   # One-time: migrate source SQLite → Postgres
 │       ├── ingest_enrichments.mjs          # enrichments.jsonl → Postgres
 │       ├── extract_discovered_suppliers.mjs # Parse discovered[] → new_suppliers.json
 │       └── ingest_discovered_suppliers.mjs  # new_suppliers.json → Postgres
@@ -270,6 +271,27 @@ cd frontend && npm run dev
 vercel dev
 # → http://localhost:3000
 ```
+
+### Database Setup
+
+The app uses a Postgres instance (Supabase / Vercel Postgres). To populate it from scratch:
+
+```bash
+# 1. Migrate base schema and data into Postgres (one-time)
+node backend/scripts/migrate-sqlite-to-postgres.mjs
+
+# 2. Ingest enrichments (ingredient profiles, compliance fields, supplier refs)
+NODE_TLS_REJECT_UNAUTHORIZED=0 node backend/scripts/ingest_enrichments.mjs
+
+# 3. Extract any newly discovered suppliers from enrichment records
+node backend/scripts/extract_discovered_suppliers.mjs
+
+# 4. Ingest discovered suppliers (dry-run first to review)
+node backend/scripts/ingest_discovered_suppliers.mjs --dry-run
+NODE_TLS_REJECT_UNAUTHORIZED=0 node backend/scripts/ingest_discovered_suppliers.mjs
+```
+
+> All ingestion scripts are idempotent — safe to re-run.
 
 ## Environment Variables
 
