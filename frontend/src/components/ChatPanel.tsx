@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { X, Send, Mic, MicOff, Plus, Volume2, VolumeX, Headphones } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { X, Send, Mic, MicOff, Plus, Volume2, VolumeX, Headphones, Radio } from "lucide-react";
 import { format } from "date-fns";
 import type { ChatMessage, ChatSession } from "@/types/chat";
 import { sendChatMessage } from "@/lib/api";
@@ -243,12 +244,49 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
   const speakerEnabledRef = useRef(true);
   const speechRequestIdRef = useRef(0);
 
+  const navigate = useNavigate();
+  const voiceConversationModeRef = useRef(false);
+  const [isVoiceConversationMode, setIsVoiceConversationMode] = useState(false);
+  // Ref so processUserMessage can call startListening without circular dep
+  const startListeningRef = useRef<() => Promise<void>>(() => Promise.resolve());
+
   const activeSession = sessions.find((s) => s.id === activeSessionId);
   const messages = activeSession?.messages ?? [];
 
   useEffect(() => {
     speakerEnabledRef.current = isSpeakerEnabled;
   }, [isSpeakerEnabled]);
+
+  useEffect(() => {
+    voiceConversationModeRef.current = isVoiceConversationMode;
+  }, [isVoiceConversationMode]);
+
+  /** Parse [NAV:...] commands out of a response, execute navigation, return clean text. */
+  const parseNavCommands = useCallback((text: string): string => {
+    const navRe = /\[NAV:([^\]]+)\]/g;
+    const actionRe = /\[ACTION:[^\]]+\]/g;
+    const highlightRe = /\[HIGHLIGHT:[^\]]+\]/g;
+    let match: RegExpExecArray | null;
+
+    while ((match = navRe.exec(text)) !== null) {
+      const parts = match[1].split(":");
+      const type = parts[0];
+      if (type === "DASHBOARD") {
+        navigate("/");
+      } else if (type === "PRODUCT" && parts[1]) {
+        navigate(`/?product=${parts[1]}`);
+      } else if (type === "ANALYSIS" && parts[1] && parts[2]) {
+        navigate(`/analysis/${parts[1]}/${parts[2]}`);
+      }
+    }
+
+    return text
+      .replace(/\[NAV:[^\]]+\]/g, "")
+      .replace(actionRe, "")
+      .replace(highlightRe, "")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+  }, [navigate]);
 
   const appendMessagesToSession = useCallback((sessionId: string, newMessages: ChatMessage[]) => {
     setSessions((prev) =>
@@ -411,13 +449,22 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
         const currentSession = sessions.find((s) => s.id === sessionId);
         const history = currentSession ? buildChatHistory(currentSession.messages) : [];
 
-        const response = await sendChatMessage(userText, history);
-        const assistantMessage = createMessage("assistant", response.response);
+        // Voice interactions use the demo prompt: brief replies + nav commands + real product IDs
+        const response = await sendChatMessage(userText, history, speakResponse);
+        // Parse and execute any navigation commands; get clean text for display + TTS
+        const cleanText = parseNavCommands(response.response);
+        const assistantMessage = createMessage("assistant", cleanText);
         appendMessagesToSession(sessionId, [assistantMessage]);
 
-        // Only speak if this was a voice interaction
         if (speakResponse) {
-          void speakText(response.response);
+          await speakText(cleanText);
+          // Auto-listen after Agnes finishes speaking if voice conversation mode is on
+          if (voiceConversationModeRef.current) {
+            await new Promise<void>((r) => setTimeout(r, 300));
+            if (voiceConversationModeRef.current) {
+              void startListeningRef.current();
+            }
+          }
         }
       } catch (error) {
         console.error("Failed to get AI response:", error);
@@ -427,11 +474,11 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
         );
         appendMessagesToSession(sessionId, [errorMessage]);
         if (speakResponse) {
-          void speakText(errorMessage.content);
+          await speakText(errorMessage.content);
         }
       }
     },
-    [appendMessagesToSession, sessions, speakText]
+    [appendMessagesToSession, sessions, speakText, parseNavCommands]
   );
 
   const stopListening = useCallback(() => {
@@ -701,11 +748,20 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
     }
   };
 
+  // Keep ref in sync so processUserMessage can call startListening without circular dep
+  useEffect(() => {
+    startListeningRef.current = startListening;
+  }, [startListening]);
+
   const toggleVoice = useCallback(async () => {
     if (isListening) {
       stopListening();
       return;
     }
+
+    // Interrupt: stop any ongoing TTS immediately before recording
+    speechRequestIdRef.current += 1;
+    stopAudioPlayback();
 
     // Speak greeting on first mic click for this session
     if (activeSessionId && !greetedSessionsRef.current.has(activeSessionId)) {
@@ -714,7 +770,7 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
     }
 
     void startListening();
-  }, [isListening, startListening, stopListening, activeSessionId, speakText]);
+  }, [isListening, startListening, stopListening, stopAudioPlayback, activeSessionId, speakText]);
 
   const toggleSpeaker = useCallback(() => {
     setIsSpeakerEnabled((prev) => {
@@ -853,6 +909,18 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
                 ) : (
                   <VolumeX className="w-4 h-4" />
                 )}
+              </button>
+              <button
+                onClick={() => setIsVoiceConversationMode((v) => !v)}
+                className={`p-2 rounded-full transition-colors ${
+                  isVoiceConversationMode
+                    ? "bg-green-500/20 text-green-600 hover:bg-green-500/30 ring-1 ring-green-400"
+                    : "bg-muted text-muted-foreground hover:bg-muted/80"
+                }`}
+                title={isVoiceConversationMode ? "Conversation mode ON — Agnes will listen after each reply" : "Enable conversation mode — continuous back-and-forth"}
+                aria-label="Toggle voice conversation mode"
+              >
+                <Radio className="w-4 h-4" />
               </button>
               {isListening && (
                 <div className="flex items-center gap-1" aria-label="Voice recording active">

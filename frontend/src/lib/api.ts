@@ -144,12 +144,13 @@ export async function getProductBom(productId: number): Promise<BomResponse> {
 // Send chat message and get AI response
 export async function sendChatMessage(
   message: string,
-  history: Array<{ role: "user" | "assistant"; content: string }> = []
+  history: Array<{ role: "user" | "assistant"; content: string }> = [],
+  isDemo = false
 ): Promise<ChatResponse> {
   const response = await fetch("/api/chat/message", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, history }),
+    body: JSON.stringify({ message, history, isDemo }),
   });
 
   if (!response.ok) {
