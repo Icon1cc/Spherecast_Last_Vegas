@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { X, Send, Mic, MicOff, Plus, Volume2, VolumeX, Headphones, Radio } from "lucide-react";
 import { format } from "date-fns";
 import type { ChatMessage, ChatSession } from "@/types/chat";
-import { sendChatMessage } from "@/lib/api";
+import { sendChatMessage, type PageContext } from "@/lib/api";
 
 interface ChatPanelProps {
   open: boolean;
@@ -245,6 +245,28 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
   const speechRequestIdRef = useRef(0);
 
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Derive page context from current URL so Agnes knows what product/material is being viewed
+  const pageContext = useMemo((): PageContext | null => {
+    const match = location.pathname.match(/^\/analysis\/(\d+)\/(\d+)/);
+    if (match) {
+      const sp = new URLSearchParams(location.search);
+      return {
+        productId: match[1],
+        materialId: match[2],
+        productName: sp.get("product") ?? undefined,
+        materialName: sp.get("material") ?? undefined,
+      };
+    }
+    const productMatch = location.pathname.match(/^\/product\/(\d+)/);
+    if (productMatch) {
+      const sp = new URLSearchParams(location.search);
+      return { productId: productMatch[1], productName: sp.get("product") ?? undefined };
+    }
+    return null;
+  }, [location.pathname, location.search]);
+
   const voiceConversationModeRef = useRef(false);
   const [isVoiceConversationMode, setIsVoiceConversationMode] = useState(false);
   // Ref so processUserMessage can call startListening without circular dep
@@ -274,9 +296,14 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
       if (type === "DASHBOARD") {
         navigate("/");
       } else if (type === "PRODUCT" && parts[1]) {
-        navigate(`/?product=${parts[1]}`);
+        const qp = new URLSearchParams();
+        if (parts[2]) qp.set("product", parts[2].replace(/_/g, " "));
+        navigate(`/?product=${parts[1]}${parts[2] ? `&name=${encodeURIComponent(parts[2])}` : ""}`);
       } else if (type === "ANALYSIS" && parts[1] && parts[2]) {
-        navigate(`/analysis/${parts[1]}/${parts[2]}`);
+        const qp = new URLSearchParams();
+        if (parts[3]) qp.set("product", parts[3].replace(/_/g, " "));
+        if (parts[4]) qp.set("material", parts[4].replace(/_/g, " "));
+        navigate(`/analysis/${parts[1]}/${parts[2]}?${qp.toString()}`);
       }
     }
 
@@ -450,7 +477,7 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
         const history = currentSession ? buildChatHistory(currentSession.messages) : [];
 
         // Voice interactions use the demo prompt: brief replies + nav commands + real product IDs
-        const response = await sendChatMessage(userText, history, speakResponse);
+        const response = await sendChatMessage(userText, history, speakResponse, pageContext);
         // Parse and execute any navigation commands; get clean text for display + TTS
         const cleanText = parseNavCommands(response.response);
         const assistantMessage = createMessage("assistant", cleanText);
@@ -478,7 +505,7 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
         }
       }
     },
-    [appendMessagesToSession, sessions, speakText, parseNavCommands]
+    [appendMessagesToSession, sessions, speakText, parseNavCommands, pageContext]
   );
 
   const stopListening = useCallback(() => {

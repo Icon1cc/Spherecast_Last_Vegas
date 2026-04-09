@@ -85,22 +85,9 @@ async function getMaterialsForProduct(pool, productId) {
 async function searchMaterialsByKeyword(pool, userMessage) {
   if (!pool) return null;
 
-  // Words to ignore when building the search — not ingredient names
-  const stopWords = new Set([
-    'vitamin', 'supplement', 'supplements', 'supply', 'supplier', 'suppliers',
-    'alternative', 'alternatives', 'sourcing', 'chain', 'product', 'products',
-    'material', 'ingredient', 'ingredients', 'about', 'looking', 'selling',
-    'want', 'need', 'have', 'find', 'show', 'tell', 'give', 'help', 'please',
-    'general', 'specific', 'terms', 'best', 'good', 'great', 'also', 'just',
-    'like', 'that', 'this', 'with', 'from', 'what', 'which', 'where', 'when',
-    'know', 'would', 'could', 'should', 'their', 'there', 'these', 'those',
-    'compare', 'comparison', 'analysis', 'analyze', 'navigate', 'page',
-  ]);
-
-  // Extract candidate keywords: 3+ char words not in stoplist
+  // Extract candidate keywords: 3+ char words (no stop-word filter — ingredient names ARE meaningful)
   const words = (userMessage.match(/\b[a-zA-Z0-9][a-zA-Z0-9\-]{2,}\b/g) || [])
-    .map(w => w.toLowerCase())
-    .filter(w => !stopWords.has(w));
+    .map(w => w.toLowerCase());
 
   // Also detect "vitamin X" patterns explicitly
   const vitaminMatch = userMessage.match(/vitamin\s+([a-z]\d*)/gi);
@@ -128,6 +115,46 @@ async function searchMaterialsByKeyword(pool, userMessage) {
       WHERE rm.type = 'raw-material'
         AND (${conditions})
       ORDER BY rm.id
+      LIMIT 5
+    `, params);
+
+    return result.rows.length > 0 ? result.rows : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Searches finished goods by keyword so Agnes can navigate to a product by SKU.
+ * @param {import('pg').Pool} pool
+ * @param {string} userMessage
+ * @returns {Promise<Array|null>} [{product_id, product_name}]
+ */
+async function searchProductsByKeyword(pool, userMessage) {
+  if (!pool) return null;
+
+  // Pull SKU-like tokens (contains dash or alphanumeric, 3+ chars) and plain words
+  const tokens = (userMessage.match(/\b[a-zA-Z0-9][a-zA-Z0-9\-]{2,}\b/g) || [])
+    .map(w => w.toLowerCase());
+
+  const skipWords = new Set([
+    'supplement', 'supply', 'supplier', 'alternative', 'sourcing', 'show', 'tell',
+    'find', 'open', 'navigate', 'what', 'which', 'that', 'this', 'with', 'from',
+    'want', 'need', 'have', 'help', 'please', 'page', 'view', 'ingredient',
+  ]);
+  const keywords = [...new Set(tokens.filter(t => !skipWords.has(t)))].slice(0, 6);
+  if (keywords.length === 0) return null;
+
+  try {
+    const conditions = keywords.map((_, i) => `LOWER(p.sku) ILIKE $${i + 1}`).join(' OR ');
+    const params = keywords.map(k => `%${k}%`);
+
+    const result = await pool.query(`
+      SELECT p.id AS product_id, p.sku AS product_name
+      FROM product p
+      WHERE p.type = 'finished-good'
+        AND (${conditions})
+      ORDER BY p.id
       LIMIT 5
     `, params);
 
@@ -182,7 +209,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { message, history = [], isDemo = false } = req.body || {};
+    const { message, history = [], isDemo = false, pageContext = null } = req.body || {};
     const demoMode = Boolean(isDemo);
 
     const { valid, error } = validateNonEmptyString(message, "Message");
@@ -199,11 +226,20 @@ export default async function handler(req, res) {
     try {
       pool = createPool();
       if (demoMode) {
-        // Run product fetch + ingredient search in parallel
-        [products, ingredientMatches] = await Promise.all([
+        // Run product fetch + ingredient search + product search in parallel
+        let productMatches = null;
+        [products, ingredientMatches, productMatches] = await Promise.all([
           getProductsForDemo(pool),
           searchMaterialsByKeyword(pool, message),
+          searchProductsByKeyword(pool, message),
         ]);
+        // Merge product matches into products list (avoid duplicates)
+        if (productMatches && productMatches.length > 0) {
+          const existingIds = new Set((products || []).map(p => p.id));
+          const newProducts = productMatches.filter(p => !existingIds.has(p.product_id))
+            .map(p => ({ id: p.product_id, name: p.product_name, company: null }));
+          products = [...(products || []), ...newProducts];
+        }
         // Also fetch materials for an explicitly referenced product ID
         const productIdMatch = message.match(/product\s*(?:id\s*)?(\d+)/i);
         if (productIdMatch) {
@@ -243,6 +279,16 @@ export default async function handler(req, res) {
         .map((material) => `- Material ID ${material.material_id}: ${material.material_name}`)
         .join("\n");
       contextPrompt += `\n\nMaterials for referenced product:\n${materialList}`;
+    }
+
+    // Inject page context so Agnes knows what the user is currently viewing
+    if (pageContext && pageContext.materialId) {
+      const productLabel = pageContext.productName || `product ID ${pageContext.productId}`;
+      const materialLabel = pageContext.materialName || `material ID ${pageContext.materialId}`;
+      contextPrompt += `\n\nCURRENT PAGE CONTEXT: The user is on the supplier analysis page for "${materialLabel}" (materialId=${pageContext.materialId}) within product "${productLabel}" (productId=${pageContext.productId}). When the user asks about suppliers, compliance, or ingredient details WITHOUT specifying a different product, answer specifically about "${materialLabel}". Do NOT ask them to select a product — they are already viewing one.`;
+    } else if (pageContext && pageContext.productId) {
+      const productLabel = pageContext.productName || `product ID ${pageContext.productId}`;
+      contextPrompt += `\n\nCURRENT PAGE CONTEXT: The user is viewing the ingredients list for "${productLabel}" (productId=${pageContext.productId}).`;
     }
 
     // Check if we should use search grounding

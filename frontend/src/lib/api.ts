@@ -141,16 +141,24 @@ export async function getProductBom(productId: number): Promise<BomResponse> {
   return response.json();
 }
 
+export interface PageContext {
+  productId?: string;
+  materialId?: string;
+  productName?: string;
+  materialName?: string;
+}
+
 // Send chat message and get AI response
 export async function sendChatMessage(
   message: string,
   history: Array<{ role: "user" | "assistant"; content: string }> = [],
-  isDemo = false
+  isDemo = false,
+  pageContext?: PageContext | null
 ): Promise<ChatResponse> {
   const response = await fetch("/api/chat/message", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, history, isDemo }),
+    body: JSON.stringify({ message, history, isDemo, pageContext: pageContext ?? null }),
   });
 
   if (!response.ok) {
