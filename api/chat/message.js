@@ -225,29 +225,26 @@ export default async function handler(req, res) {
     let pool;
     try {
       pool = createPool();
-      if (demoMode) {
-        // Run product fetch + ingredient search + product search in parallel
-        let productMatches = null;
-        [products, ingredientMatches, productMatches] = await Promise.all([
-          getProductsForDemo(pool),
-          searchMaterialsByKeyword(pool, message),
-          searchProductsByKeyword(pool, message),
-        ]);
-        // Merge product matches into products list (avoid duplicates)
-        if (productMatches && productMatches.length > 0) {
-          const existingIds = new Set((products || []).map(p => p.id));
-          const newProducts = productMatches.filter(p => !existingIds.has(p.product_id))
-            .map(p => ({ id: p.product_id, name: p.product_name, company: null }));
-          products = [...(products || []), ...newProducts];
-        }
-        // Also fetch materials for an explicitly referenced product ID
-        const productIdMatch = message.match(/product\s*(?:id\s*)?(\d+)/i);
-        if (productIdMatch) {
-          const productId = parseInt(productIdMatch[1], 10);
-          demoMaterials = await getMaterialsForProduct(pool, productId);
-        }
-      } else {
-        dbContext = await getDbContext(pool);
+      // Always fetch navigation context so Agnes can use real IDs in both demo and regular chat
+      let productMatches = null;
+      [products, ingredientMatches, productMatches, dbContext] = await Promise.all([
+        getProductsForDemo(pool),
+        searchMaterialsByKeyword(pool, message),
+        searchProductsByKeyword(pool, message),
+        getDbContext(pool),
+      ]);
+      // Merge product matches into products list (avoid duplicates)
+      if (productMatches && productMatches.length > 0) {
+        const existingIds = new Set((products || []).map(p => p.id));
+        const newProducts = productMatches.filter(p => !existingIds.has(p.product_id))
+          .map(p => ({ id: p.product_id, name: p.product_name, company: null }));
+        products = [...(products || []), ...newProducts];
+      }
+      // Also fetch materials for an explicitly referenced product ID
+      const productIdMatch = message.match(/product\s*(?:id\s*)?(\d+)/i);
+      if (productIdMatch) {
+        const productId = parseInt(productIdMatch[1], 10);
+        demoMaterials = await getMaterialsForProduct(pool, productId);
       }
     } catch (dbError) {
       console.warn("Chat API DB context unavailable:", dbError);
@@ -257,24 +254,24 @@ export default async function handler(req, res) {
 
     // Build context-aware prompt
     let contextPrompt = demoMode ? AGNES_DEMO_SYSTEM_PROMPT : AGNES_SYSTEM_PROMPT;
-    if (!demoMode && dbContext) {
+    if (dbContext) {
       contextPrompt += `\n\nDatabase context: ${dbContext.productCount} products, ${dbContext.supplierCount} suppliers, ${dbContext.companyCount} companies.`;
     }
-    if (demoMode && products && products.length > 0) {
+    if (products && products.length > 0) {
       const productList = products
         .slice(0, 10)
         .map((product) => `- ID ${product.id}: ${product.name} (${product.company || "Unknown"})`)
         .join("\n");
       contextPrompt += `\n\nAvailable finished goods:\n${productList}`;
     }
-    if (demoMode && ingredientMatches && ingredientMatches.length > 0) {
-      // This is the key context: real material_id + product_id pairs Agnes can use directly in NAV commands
+    if (ingredientMatches && ingredientMatches.length > 0) {
+      // Real material_id + product_id pairs Agnes can use directly in NAV commands
       const matchList = ingredientMatches
         .map(m => `- "${m.material_name}" → materialId=${m.material_id} in productId=${m.product_id} ("${m.product_name}")`)
         .join("\n");
       contextPrompt += `\n\nMatching raw materials found in database for this query:\n${matchList}\n\nUse these EXACT IDs in [NAV:ANALYSIS:productId:materialId:productName:materialName] commands. Do NOT invent IDs.`;
     }
-    if (demoMode && demoMaterials && demoMaterials.length > 0) {
+    if (demoMaterials && demoMaterials.length > 0) {
       const materialList = demoMaterials
         .map((material) => `- Material ID ${material.material_id}: ${material.material_name}`)
         .join("\n");
