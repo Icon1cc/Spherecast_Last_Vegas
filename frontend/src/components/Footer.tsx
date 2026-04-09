@@ -14,11 +14,13 @@ const Footer = () => {
     <footer className="h-12 bg-header flex items-center px-6 mt-auto">
       <div className="flex items-center justify-between w-full max-w-7xl mx-auto">
         <div className="flex items-center gap-2">
-          <img
-            src="/logo.jpeg"
-            alt="SupplyWise AI logo"
-            className="w-5 h-5 rounded-full object-cover ring-1 ring-header-foreground/20"
-          />
+          <div className="w-6 h-6 rounded-full bg-white overflow-hidden ring-1 ring-header-foreground/20">
+            <img
+              src="/logo.jpeg"
+              alt="SupplyWise AI logo"
+              className="w-full h-full object-contain scale-[2.4]"
+            />
+          </div>
           <span className="text-header-foreground/70 text-xs">
             &copy; {currentYear} SupplyWise AI. All rights reserved.
           </span>
