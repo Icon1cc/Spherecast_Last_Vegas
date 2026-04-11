@@ -171,17 +171,10 @@ const AgnesDemoOverlay = memo(function AgnesDemoOverlay({
   if (!isOpen) return null;
 
   const statusText = getStatusText(phase);
-  const lastUserMessage = [...transcript].reverse().find(t => t.role === "user");
 
   return createPortal(
     <>
-      {/* Semi-transparent backdrop - allows seeing content */}
-      <div
-        className="fixed inset-0 z-[90] bg-black/30 backdrop-blur-[2px] transition-opacity duration-300"
-        onClick={handleClose}
-      />
-
-      {/* Sidebar panel */}
+      {/* Sidebar panel - NO backdrop blur, user can see and interact with main content */}
       <div className="fixed right-0 top-0 bottom-0 w-80 z-[100] bg-gradient-to-b from-slate-900 to-slate-950 border-l border-white/10 shadow-2xl flex flex-col animate-slide-in-right">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-white/10">
