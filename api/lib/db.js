@@ -75,15 +75,12 @@ export function createPool() {
     rejectUnauthorized
   );
 
-  if (!rejectUnauthorized) {
-    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-  }
+  // Always allow self-signed certificates for Supabase
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
   return new pg.Pool({
     connectionString,
-    ssl: {
-      rejectUnauthorized,
-    },
+    ssl: rejectUnauthorized ? true : { rejectUnauthorized: false },
     max: 5,
     idleTimeoutMillis: 30000,
   });

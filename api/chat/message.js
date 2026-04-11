@@ -38,6 +38,7 @@ async function getFullNavigationContext(pool) {
         WHERE type = 'finished-good'
         ORDER BY id
       `),
+      // Join through bom -> bom_component to get raw materials with their parent products
       pool.query(`
         SELECT DISTINCT ON (rm.id)
           rm.id   AS material_id,
@@ -45,8 +46,9 @@ async function getFullNavigationContext(pool) {
           fg.id   AS product_id,
           fg.sku  AS product_name
         FROM product rm
-        JOIN bom        ON bom.raw_material_id = rm.id
-        JOIN product fg ON fg.id               = bom.finished_good_id
+        JOIN bom_component bc ON bc.consumed_product_id = rm.id
+        JOIN bom b ON b.id = bc.bom_id
+        JOIN product fg ON fg.id = b.produced_product_id
         WHERE rm.type = 'raw-material'
         ORDER BY rm.id
       `),
@@ -56,7 +58,8 @@ async function getFullNavigationContext(pool) {
       finishedGoods: productsResult.rows,
       rawMaterials: materialsResult.rows,
     };
-  } catch {
+  } catch (err) {
+    console.error("[getFullNavigationContext] Query error:", err.message);
     return null;
   }
 }
