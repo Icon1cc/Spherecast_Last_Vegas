@@ -17,21 +17,21 @@ export const VOICE_CONFIG = {
   sttModelId: import.meta.env.VITE_ELEVENLABS_STT_MODEL_ID?.trim() || "scribe_v1",
 
   // Voice detection thresholds (tuned for reliable speech detection)
-  baseSilenceThreshold: 0.015,
-  minDynamicSilenceThreshold: 0.008,
-  maxDynamicSilenceThreshold: 0.05,
-  silenceThresholdMultiplier: 1.8,
+  baseSilenceThreshold: 0.02,
+  minDynamicSilenceThreshold: 0.01,
+  maxDynamicSilenceThreshold: 0.06,
+  silenceThresholdMultiplier: 2.0,
 
-  // Timing constants (milliseconds)
-  noiseCalibrationMs: 400,
-  silenceDurationMs: 1200,
-  noSpeechTimeoutMs: 12000,
-  maxRecordingMs: 30000,
-  minRecordingMs: 1000,
+  // Timing constants (milliseconds) - optimized for faster response
+  noiseCalibrationMs: 300,
+  silenceDurationMs: 800,      // Reduced from 1200 - faster end-of-speech detection
+  noSpeechTimeoutMs: 8000,     // Reduced from 12000
+  maxRecordingMs: 20000,       // Reduced from 30000
+  minRecordingMs: 500,         // Reduced from 1000
 
   // TTS chunking
-  ttsChunkMaxChars: 200,
-  minAudioBytesForStt: 2048,
+  ttsChunkMaxChars: 150,       // Smaller chunks for faster playback start
+  minAudioBytesForStt: 1024,   // Reduced threshold
 } as const;
 
 // Supported MIME types for MediaRecorder (in preference order)

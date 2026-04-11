@@ -10,7 +10,7 @@ import { parseIntent, shouldEndDemo, hasNavigation } from "@/lib/intentParser";
 import type { DemoState, DemoAction, DemoPhase, TranscriptEntry, NavigationTarget } from "@/types/demo";
 import type { PageContext } from "@/lib/api";
 
-const AGNES_GREETING = "Hi, I'm Agnes. What would you like to explore?";
+const AGNES_GREETING = "Hi, I am Agnes. What would you like to see?";
 
 const initialState: DemoState = {
   phase: "IDLE",
@@ -292,7 +292,7 @@ export function useAgnesDemo(options: UseAgnesDemoOptions = {}): UseAgnesDemoRet
     }
 
     // Wait for navigation to settle
-    await new Promise(resolve => setTimeout(resolve, 600));
+    await new Promise(resolve => setTimeout(resolve, 400));
     dispatch({ type: "NAVIGATION_COMPLETE" });
   }, [navigate, options]);
 
@@ -313,10 +313,10 @@ export function useAgnesDemo(options: UseAgnesDemoOptions = {}): UseAgnesDemoRet
       return;
     }
 
-    // Speak the response
+    // Speak the response first
     await voiceIO.speak(intent.speech);
 
-    // Handle navigation after speech
+    // Handle navigation after speech (if any)
     if (hasNavigation(intent) && intent.navigation) {
       pendingNavigationRef.current = intent.navigation;
     }
@@ -341,17 +341,17 @@ export function useAgnesDemo(options: UseAgnesDemoOptions = {}): UseAgnesDemoRet
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.phase]);
 
-  // Effect: Handle LISTENING phase
+  // Effect: Handle LISTENING phase - start mic faster
   useEffect(() => {
     if (state.phase !== "LISTENING") return;
 
-    console.log("[Agnes] LISTENING phase - starting mic in 400ms");
+    console.log("[Agnes] LISTENING phase - starting mic in 200ms");
     const timer = setTimeout(() => {
       if (state.phase === "LISTENING") {
         console.log("[Agnes] Starting microphone...");
         void voiceIO.startListening();
       }
-    }, 400);
+    }, 200);
 
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps

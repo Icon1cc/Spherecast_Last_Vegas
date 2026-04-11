@@ -113,7 +113,7 @@ const Dashboard = () => {
               className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-gray-800 to-gray-900 text-white text-sm font-medium rounded-lg shadow-lg hover:shadow-xl hover:from-gray-700 hover:to-gray-800 transition-all duration-200 hover-lift group"
             >
               <Sparkles className="w-4 h-4 group-hover:animate-pulse" />
-              <span>Start Demo</span>
+              <span>Try Agnes</span>
             </button>
             {!isLoading && (
               <span className="text-sm text-muted-foreground">{total} products</span>
