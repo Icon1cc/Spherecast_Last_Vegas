@@ -1,176 +1,38 @@
 /**
  * useVoiceIO - Reusable voice input/output hook for Agnes
- * Extracted and adapted from ChatPanel.tsx for demo mode
+ * Refactored to use shared voice utilities
  */
 
 import { useRef, useCallback, useState } from "react";
+import {
+  VOICE_CONFIG,
+  RECORDER_MIME_CANDIDATES,
+  normalizeTextForSpeech,
+  splitTextForSpeech,
+  getAudioContextClass,
+  pickSupportedRecorderMimeType,
+  extensionForMimeType,
+  calculateRMS,
+  calculateDynamicThreshold,
+} from "@/lib/voiceUtils";
 
-// ElevenLabs configuration
-const DEFAULT_ELEVENLABS_VOICE_ID = "s3TPKV1kjDlVtZbl4Ksh";
-const ELEVENLABS_VOICE_ID =
-  import.meta.env.VITE_ELEVENLABS_VOICE_ID?.trim() ?? DEFAULT_ELEVENLABS_VOICE_ID;
-const ELEVENLABS_TTS_MODEL_ID =
-  import.meta.env.VITE_ELEVENLABS_TTS_MODEL_ID?.trim() ?? "eleven_multilingual_v2";
-const ELEVENLABS_STT_MODEL_ID =
-  import.meta.env.VITE_ELEVENLABS_STT_MODEL_ID?.trim() ?? "scribe_v1";
+// Destructure config for convenience
+const {
+  voiceId: ELEVENLABS_VOICE_ID,
+  ttsModelId: ELEVENLABS_TTS_MODEL_ID,
+  sttModelId: ELEVENLABS_STT_MODEL_ID,
+  noiseCalibrationMs: NOISE_CALIBRATION_MS,
+  silenceDurationMs: SILENCE_DURATION_MS,
+  noSpeechTimeoutMs: NO_SPEECH_TIMEOUT_MS,
+  maxRecordingMs: MAX_RECORDING_MS,
+  minRecordingMs: MIN_RECORDING_MS,
+  minAudioBytesForStt: MIN_AUDIO_BYTES_FOR_STT,
+} = VOICE_CONFIG;
 
-// Voice detection constants - tuned for reliable speech detection
-const BASE_SILENCE_THRESHOLD = 0.008;       // Very low = catches quiet speech
-const MIN_DYNAMIC_SILENCE_THRESHOLD = 0.005; // Minimum threshold floor
-const MAX_DYNAMIC_SILENCE_THRESHOLD = 0.04; // Maximum threshold ceiling
-const SILENCE_THRESHOLD_MULTIPLIER = 1.5;   // How much above ambient noise to trigger
-const NOISE_CALIBRATION_MS = 300;           // Quick calibration
-const SILENCE_DURATION_MS = 1500;           // Wait 1.5s of silence before stopping
-const NO_SPEECH_TIMEOUT_MS = 15000;         // Max wait for speech to start (15s)
-const MAX_RECORDING_MS = 45000;             // Max recording duration (45s)
-const MIN_RECORDING_MS = 1500;              // Minimum recording time before allowing stop
-const TTS_CHUNK_MAX_CHARS = 180;
-const MIN_AUDIO_BYTES_FOR_STT = 4096;
-const RECORDER_MIME_CANDIDATES = [
-  "audio/webm;codecs=opus",
-  "audio/webm",
-  "audio/mp4",
-  "audio/ogg;codecs=opus",
-];
+const AudioContextClass = getAudioContextClass();
 
-const AudioContextClass =
-  typeof window !== "undefined"
-    ? window.AudioContext ||
-      (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
-    : undefined;
-
-const pickSupportedRecorderMimeType = (): string | null => {
-  if (typeof MediaRecorder === "undefined" || typeof MediaRecorder.isTypeSupported !== "function") {
-    return null;
-  }
-  return RECORDER_MIME_CANDIDATES.find((mime) => MediaRecorder.isTypeSupported(mime)) ?? null;
-};
-
-const extensionForMimeType = (mimeType: string): string => {
-  const normalized = mimeType.toLowerCase();
-  if (normalized.includes("wav")) return "wav";
-  if (normalized.includes("mp4") || normalized.includes("m4a")) return "m4a";
-  if (normalized.includes("ogg")) return "ogg";
-  if (normalized.includes("mpeg") || normalized.includes("mp3")) return "mp3";
-  return "webm";
-};
-
-const encodeAudioBufferToWav = (audioBuffer: AudioBuffer): Blob => {
-  const channelCount = audioBuffer.numberOfChannels;
-  const sampleRate = audioBuffer.sampleRate;
-  const frameCount = audioBuffer.length;
-  const bytesPerSample = 2;
-  const blockAlign = channelCount * bytesPerSample;
-  const byteRate = sampleRate * blockAlign;
-  const dataSize = frameCount * blockAlign;
-  const buffer = new ArrayBuffer(44 + dataSize);
-  const view = new DataView(buffer);
-
-  const writeString = (offset: number, value: string) => {
-    for (let i = 0; i < value.length; i += 1) {
-      view.setUint8(offset + i, value.charCodeAt(i));
-    }
-  };
-
-  writeString(0, "RIFF");
-  view.setUint32(4, 36 + dataSize, true);
-  writeString(8, "WAVE");
-  writeString(12, "fmt ");
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, channelCount, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, byteRate, true);
-  view.setUint16(32, blockAlign, true);
-  view.setUint16(34, 16, true);
-  writeString(36, "data");
-  view.setUint32(40, dataSize, true);
-
-  const channels = Array.from({ length: channelCount }, (_, index) =>
-    audioBuffer.getChannelData(index)
-  );
-
-  let offset = 44;
-  for (let i = 0; i < frameCount; i += 1) {
-    for (let channel = 0; channel < channelCount; channel += 1) {
-      const sample = Math.max(-1, Math.min(1, channels[channel][i]));
-      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
-      offset += bytesPerSample;
-    }
-  }
-
-  return new Blob([buffer], { type: "audio/wav" });
-};
-
-const transcodeToWavIfPossible = async (source: Blob): Promise<Blob | null> => {
-  if (source.type.toLowerCase().includes("wav")) return source;
-  if (!AudioContextClass) {
-    console.log("[VoiceIO] No AudioContext, cannot transcode");
-    return null;
-  }
-
-  const context = new AudioContextClass();
-  try {
-    const arrayBuffer = await source.arrayBuffer();
-    console.log("[VoiceIO] Decoding audio buffer, size:", arrayBuffer.byteLength);
-    const decoded = await context.decodeAudioData(arrayBuffer.slice(0));
-    console.log("[VoiceIO] Audio decoded, duration:", decoded.duration, "sampleRate:", decoded.sampleRate);
-    const wavBlob = encodeAudioBufferToWav(decoded);
-    console.log("[VoiceIO] WAV encoded, size:", wavBlob.size);
-    return wavBlob;
-  } catch (err) {
-    console.error("[VoiceIO] Transcode to WAV failed:", err);
-    return null;
-  } finally {
-    void context.close();
-  }
-};
-
-/**
- * Normalize text for TTS - remove markdown and clean up
- */
-const normalizeTextForSpeech = (text: string): string =>
-  text
-    .replace(/```[\s\S]*?```/g, " ")
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-    .replace(/\*\*([^*]+)\*\*/g, "$1")
-    .replace(/\*([^*]+)\*/g, "$1")
-    .replace(/^\s*[-*]\s+/gm, "")
-    .replace(/\s+/g, " ")
-    .trim();
-
-/**
- * Split text into chunks for TTS
- */
-const splitTextForSpeech = (text: string, maxChars: number = TTS_CHUNK_MAX_CHARS): string[] => {
-  const normalized = normalizeTextForSpeech(text);
-  if (!normalized) return [];
-
-  const sentences =
-    normalized.match(/[^.!?]+[.!?]*/g)?.map((s) => s.trim()).filter(Boolean) ?? [normalized];
-
-  const chunks: string[] = [];
-  let current = "";
-
-  for (const sentence of sentences) {
-    if (!current) {
-      current = sentence;
-      continue;
-    }
-
-    const candidate = `${current} ${sentence}`.trim();
-    if (candidate.length <= maxChars) {
-      current = candidate;
-    } else {
-      chunks.push(current);
-      current = sentence;
-    }
-  }
-
-  if (current) chunks.push(current);
-  return chunks;
-};
+// Re-export for backward compatibility
+export { pickSupportedRecorderMimeType, extensionForMimeType };
 
 export interface UseVoiceIOOptions {
   onTranscript?: (text: string) => void;
@@ -465,12 +327,7 @@ export function useVoiceIO(options: UseVoiceIOOptions = {}): UseVoiceIOReturn {
           if (mediaRecorderRef.current?.state !== "recording") return;
 
           analyser.getByteTimeDomainData(waveform);
-          let sum = 0;
-          for (const sample of waveform) {
-            const normalized = (sample - 128) / 128;
-            sum += normalized * normalized;
-          }
-          const rms = Math.sqrt(sum / waveform.length);
+          const rms = calculateRMS(waveform);
 
           // Calibration phase - collect ambient noise samples
           if (!speechDetectedRef.current && timestamp <= calibrationEndAt) {
@@ -480,15 +337,9 @@ export function useVoiceIO(options: UseVoiceIOOptions = {}): UseVoiceIOReturn {
           const calibrationAverage =
             calibrationSamples.length > 0
               ? calibrationSamples.reduce((a, v) => a + v, 0) / calibrationSamples.length
-              : BASE_SILENCE_THRESHOLD;
+              : VOICE_CONFIG.baseSilenceThreshold;
 
-          const dynamicThreshold = Math.max(
-            MIN_DYNAMIC_SILENCE_THRESHOLD,
-            Math.min(
-              MAX_DYNAMIC_SILENCE_THRESHOLD,
-              Math.max(BASE_SILENCE_THRESHOLD, calibrationAverage * SILENCE_THRESHOLD_MULTIPLIER)
-            )
-          );
+          const dynamicThreshold = calculateDynamicThreshold(calibrationAverage);
 
           // Any sound above threshold = speech detected
           if (rms >= dynamicThreshold) {

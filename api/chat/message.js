@@ -212,8 +212,8 @@ export default async function handler(req, res) {
       const chat = model.startChat({
         history: chatHistory,
         generationConfig: {
-          maxOutputTokens: demoMode ? 150 : GEMINI_MAX_OUTPUT_TOKENS,
-          temperature: demoMode ? 0.3 : GEMINI_TEMPERATURE,
+          maxOutputTokens: demoMode ? 512 : GEMINI_MAX_OUTPUT_TOKENS,
+          temperature: demoMode ? 0.4 : GEMINI_TEMPERATURE,
         },
       });
       const result = await chat.sendMessage(message);

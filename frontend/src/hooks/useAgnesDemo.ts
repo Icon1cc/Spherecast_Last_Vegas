@@ -4,7 +4,7 @@
  */
 
 import { useReducer, useCallback, useRef, useEffect } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useVoiceIO } from "./useVoiceIO";
 import { parseIntent, shouldEndDemo, hasNavigation } from "@/lib/intentParser";
 import type { DemoState, DemoAction, DemoPhase, TranscriptEntry, NavigationTarget } from "@/types/demo";
@@ -70,7 +70,7 @@ function demoReducer(state: DemoState, action: DemoAction): DemoState {
         phase: "THINKING",
       };
 
-    case "AI_RESPONSE":
+    case "AI_RESPONSE": {
       const newTranscript: TranscriptEntry = {
         id: crypto.randomUUID(),
         role: "agnes",
@@ -88,6 +88,7 @@ function demoReducer(state: DemoState, action: DemoAction): DemoState {
           { role: "assistant", content: action.payload.speech },
         ],
       };
+    }
 
     case "SPEECH_START":
       return {
@@ -175,7 +176,6 @@ export interface UseAgnesDemoReturn {
 export function useAgnesDemo(options: UseAgnesDemoOptions = {}): UseAgnesDemoReturn {
   const [state, dispatch] = useReducer(demoReducer, initialState);
   const navigate = useNavigate();
-  const location = useLocation();
   const isProcessingRef = useRef(false);
   const pendingNavigationRef = useRef<NavigationTarget | null>(null);
   const noSpeechRetryCountRef = useRef(0);
@@ -240,30 +240,34 @@ export function useAgnesDemo(options: UseAgnesDemoOptions = {}): UseAgnesDemoRet
    */
   const executeNavigation = useCallback(async (target: NavigationTarget) => {
     options.onNavigate?.(target);
+    console.log("[Agnes] Executing navigation:", target);
 
     switch (target.type) {
       case "DASHBOARD":
         navigate("/");
         break;
-      case "PRODUCT":
-        // Navigate to dashboard and we'll handle product selection via highlight
-        if (location.pathname !== "/") {
-          navigate("/");
-        }
+      case "PRODUCT": {
+        // Navigate to dashboard with product param to auto-open the BOM modal
+        const productParams = new URLSearchParams();
+        if (target.productId) productParams.set("product", String(target.productId));
+        if (target.productName) productParams.set("name", target.productName);
+        navigate(`/?${productParams.toString()}`);
         break;
-      case "ANALYSIS":
-        const params = new URLSearchParams({
+      }
+      case "ANALYSIS": {
+        const analysisParams = new URLSearchParams({
           product: target.productName || "Product",
           material: target.materialName || "Material",
         });
-        navigate(`/analysis/${target.productId}/${target.materialId}?${params}`);
+        navigate(`/analysis/${target.productId}/${target.materialId}?${analysisParams}`);
         break;
+      }
     }
 
     // Wait for navigation to settle
-    await new Promise(resolve => setTimeout(resolve, 800));
+    await new Promise(resolve => setTimeout(resolve, 600));
     dispatch({ type: "NAVIGATION_COMPLETE" });
-  }, [navigate, location.pathname, options]);
+  }, [navigate, options]);
 
   /**
    * Process AI response and handle actions

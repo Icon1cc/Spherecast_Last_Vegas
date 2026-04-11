@@ -4,29 +4,38 @@ import { X, Send, Mic, MicOff, Plus, Volume2, VolumeX, Headphones, Radio } from 
 import { format } from "date-fns";
 import type { ChatMessage, ChatSession } from "@/types/chat";
 import { sendChatMessage, type PageContext } from "@/lib/api";
+import {
+  VOICE_CONFIG,
+  AGNES_GREETING,
+  normalizeTextForSpeech,
+  splitTextForSpeech,
+  getAudioContextClass,
+  pickSupportedRecorderMimeType,
+  extensionForMimeType,
+  calculateRMS,
+  calculateDynamicThreshold,
+  parseNavigationCommands,
+} from "@/lib/voiceUtils";
 
 interface ChatPanelProps {
   open: boolean;
   onClose: () => void;
 }
 
-const AGNES_GREETING = "Hello I am Agnes, how can I help you today";
-const DEFAULT_ELEVENLABS_VOICE_ID = "s3TPKV1kjDlVtZbl4Ksh";
-const ELEVENLABS_VOICE_ID =
-  import.meta.env.VITE_ELEVENLABS_VOICE_ID?.trim() ?? DEFAULT_ELEVENLABS_VOICE_ID;
-const ELEVENLABS_TTS_MODEL_ID =
-  import.meta.env.VITE_ELEVENLABS_TTS_MODEL_ID?.trim() ?? "eleven_multilingual_v2";
-const ELEVENLABS_STT_MODEL_ID =
-  import.meta.env.VITE_ELEVENLABS_STT_MODEL_ID?.trim() ?? "scribe_v1";
-const BASE_SILENCE_THRESHOLD = 0.03;
-const MIN_DYNAMIC_SILENCE_THRESHOLD = 0.02;
-const MAX_DYNAMIC_SILENCE_THRESHOLD = 0.09;
-const SILENCE_THRESHOLD_MULTIPLIER = 2.2;
-const NOISE_CALIBRATION_MS = 700;
-const SILENCE_DURATION_MS = 900;
-const NO_SPEECH_TIMEOUT_MS = 6000;
-const MAX_RECORDING_MS = 20000;
-const TTS_CHUNK_MAX_CHARS = 180;
+// Use centralized voice configuration
+const {
+  voiceId: ELEVENLABS_VOICE_ID,
+  ttsModelId: ELEVENLABS_TTS_MODEL_ID,
+  sttModelId: ELEVENLABS_STT_MODEL_ID,
+  baseSilenceThreshold: BASE_SILENCE_THRESHOLD,
+  minDynamicSilenceThreshold: MIN_DYNAMIC_SILENCE_THRESHOLD,
+  maxDynamicSilenceThreshold: MAX_DYNAMIC_SILENCE_THRESHOLD,
+  silenceThresholdMultiplier: SILENCE_THRESHOLD_MULTIPLIER,
+  noiseCalibrationMs: NOISE_CALIBRATION_MS,
+  silenceDurationMs: SILENCE_DURATION_MS,
+  noSpeechTimeoutMs: NO_SPEECH_TIMEOUT_MS,
+  maxRecordingMs: MAX_RECORDING_MS,
+} = VOICE_CONFIG;
 
 const createMessage = (role: ChatMessage["role"], content: string): ChatMessage => ({
   id: crypto.randomUUID(),
@@ -50,46 +59,6 @@ const buildChatHistory = (messages: ChatMessage[]): Array<{ role: "user" | "assi
       role: msg.role as "user" | "assistant",
       content: msg.content,
     }));
-};
-
-const normalizeTextForSpeech = (text: string): string =>
-  text
-    .replace(/```[\s\S]*?```/g, " ")
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-    .replace(/\*\*([^*]+)\*\*/g, "$1")
-    .replace(/\*([^*]+)\*/g, "$1")
-    .replace(/^\s*[-*]\s+/gm, "")
-    .replace(/\s+/g, " ")
-    .trim();
-
-const splitTextForSpeech = (text: string, maxChars: number = TTS_CHUNK_MAX_CHARS): string[] => {
-  const normalized = normalizeTextForSpeech(text);
-  if (!normalized) return [];
-
-  const sentences =
-    normalized.match(/[^.!?]+[.!?]*/g)?.map((s) => s.trim()).filter(Boolean) ?? [normalized];
-
-  const chunks: string[] = [];
-  let current = "";
-
-  for (const sentence of sentences) {
-    if (!current) {
-      current = sentence;
-      continue;
-    }
-
-    const candidate = `${current} ${sentence}`.trim();
-    if (candidate.length <= maxChars) {
-      current = candidate;
-    } else {
-      chunks.push(current);
-      current = sentence;
-    }
-  }
-
-  if (current) chunks.push(current);
-  return chunks;
 };
 
 /**
@@ -285,34 +254,26 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
 
   /** Parse [NAV:...] commands out of a response, execute navigation, return clean text. */
   const parseNavCommands = useCallback((text: string): string => {
-    const navRe = /\[NAV:([^\]]+)\]/g;
-    const actionRe = /\[ACTION:[^\]]+\]/g;
-    const highlightRe = /\[HIGHLIGHT:[^\]]+\]/g;
-    let match: RegExpExecArray | null;
+    const { cleanText, navCommands } = parseNavigationCommands(text);
 
-    while ((match = navRe.exec(text)) !== null) {
-      const parts = match[1].split(":");
-      const type = parts[0];
-      if (type === "DASHBOARD") {
+    // Execute all navigation commands
+    for (const cmd of navCommands) {
+      if (cmd.type === "DASHBOARD") {
         navigate("/");
-      } else if (type === "PRODUCT" && parts[1]) {
+      } else if (cmd.type === "PRODUCT" && cmd.productId) {
         const qp = new URLSearchParams();
-        if (parts[2]) qp.set("product", parts[2].replace(/_/g, " "));
-        navigate(`/?product=${parts[1]}${parts[2] ? `&name=${encodeURIComponent(parts[2])}` : ""}`);
-      } else if (type === "ANALYSIS" && parts[1] && parts[2]) {
+        qp.set("product", String(cmd.productId));
+        if (cmd.productName) qp.set("name", cmd.productName);
+        navigate(`/?${qp.toString()}`);
+      } else if (cmd.type === "ANALYSIS" && cmd.productId && cmd.materialId) {
         const qp = new URLSearchParams();
-        if (parts[3]) qp.set("product", parts[3].replace(/_/g, " "));
-        if (parts[4]) qp.set("material", parts[4].replace(/_/g, " "));
-        navigate(`/analysis/${parts[1]}/${parts[2]}?${qp.toString()}`);
+        if (cmd.productName) qp.set("product", cmd.productName);
+        if (cmd.materialName) qp.set("material", cmd.materialName);
+        navigate(`/analysis/${cmd.productId}/${cmd.materialId}?${qp.toString()}`);
       }
     }
 
-    return text
-      .replace(/\[NAV:[^\]]+\]/g, "")
-      .replace(actionRe, "")
-      .replace(highlightRe, "")
-      .replace(/\s{2,}/g, " ")
-      .trim();
+    return cleanText;
   }, [navigate]);
 
   const appendMessagesToSession = useCallback((sessionId: string, newMessages: ChatMessage[]) => {
@@ -560,9 +521,7 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
         }
       };
 
-      const AudioContextClass =
-        window.AudioContext ||
-        (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      const AudioContextClass = getAudioContextClass();
 
       if (AudioContextClass) {
         const audioContext = new AudioContextClass();
@@ -588,14 +547,8 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
           }
 
           analyser.getByteTimeDomainData(waveform);
-          let sum = 0;
+          const rms = calculateRMS(waveform);
 
-          for (const sample of waveform) {
-            const normalized = (sample - 128) / 128;
-            sum += normalized * normalized;
-          }
-
-          const rms = Math.sqrt(sum / waveform.length);
           if (!speechDetectedRef.current && timestamp <= calibrationEndAt) {
             calibrationSamples.push(rms);
           }
@@ -605,13 +558,7 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
               ? calibrationSamples.reduce((acc, value) => acc + value, 0) / calibrationSamples.length
               : BASE_SILENCE_THRESHOLD;
 
-          const dynamicThreshold = Math.max(
-            MIN_DYNAMIC_SILENCE_THRESHOLD,
-            Math.min(
-              MAX_DYNAMIC_SILENCE_THRESHOLD,
-              Math.max(BASE_SILENCE_THRESHOLD, calibrationAverage * SILENCE_THRESHOLD_MULTIPLIER)
-            )
-          );
+          const dynamicThreshold = calculateDynamicThreshold(calibrationAverage);
 
           if (rms >= dynamicThreshold) {
             speechDetectedRef.current = true;
