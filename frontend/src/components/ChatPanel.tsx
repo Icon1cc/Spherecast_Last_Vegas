@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useLocation } from "react-router-dom";
-import { X, Send, Mic, MicOff, Plus, Volume2, VolumeX, Headphones, Radio } from "lucide-react";
+import { X, Send, Mic, MicOff, Plus, Volume2, VolumeX, Headphones } from "lucide-react";
 import { format } from "date-fns";
 import type { ChatMessage, ChatSession } from "@/types/chat";
 import { sendChatMessage, type PageContext } from "@/lib/api";
@@ -232,21 +232,12 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
     return null;
   }, [location.pathname, location.search]);
 
-  const voiceConversationModeRef = useRef(false);
-  const [isVoiceConversationMode, setIsVoiceConversationMode] = useState(false);
-  // Ref so processUserMessage can call startListening without circular dep
-  const startListeningRef = useRef<() => Promise<void>>(() => Promise.resolve());
-
   const activeSession = sessions.find((s) => s.id === activeSessionId);
   const messages = activeSession?.messages ?? [];
 
   useEffect(() => {
     speakerEnabledRef.current = isSpeakerEnabled;
   }, [isSpeakerEnabled]);
-
-  useEffect(() => {
-    voiceConversationModeRef.current = isVoiceConversationMode;
-  }, [isVoiceConversationMode]);
 
   /** Strip [NAV:...], [ACTION:...], [HIGHLIGHT:...] commands from response - chatbot does NOT navigate */
   const cleanResponseText = useCallback((text: string): string => {
@@ -430,15 +421,9 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
         const assistantMessage = createMessage("assistant", cleanText);
         appendMessagesToSession(sessionId, [assistantMessage]);
 
+        // Speak response if voice mode is enabled
         if (speakResponse) {
           await speakText(cleanText);
-          // Auto-listen after Agnes finishes speaking if voice conversation mode is on
-          if (voiceConversationModeRef.current) {
-            await new Promise<void>((r) => setTimeout(r, 600));
-            if (voiceConversationModeRef.current) {
-              void startListeningRef.current();
-            }
-          }
         }
       } catch (error) {
         console.error("Failed to get AI response:", error);
@@ -708,11 +693,6 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
     }
   };
 
-  // Keep ref in sync so processUserMessage can call startListening without circular dep
-  useEffect(() => {
-    startListeningRef.current = startListening;
-  }, [startListening]);
-
   const toggleVoice = useCallback(async () => {
     if (isListening) {
       stopListening();
@@ -869,18 +849,6 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
                 ) : (
                   <VolumeX className="w-4 h-4" />
                 )}
-              </button>
-              <button
-                onClick={() => setIsVoiceConversationMode((v) => !v)}
-                className={`p-2 rounded-full transition-colors ${
-                  isVoiceConversationMode
-                    ? "bg-green-500/20 text-green-600 hover:bg-green-500/30 ring-1 ring-green-400"
-                    : "bg-muted text-muted-foreground hover:bg-muted/80"
-                }`}
-                title={isVoiceConversationMode ? "Conversation mode ON — Agnes will listen after each reply" : "Enable conversation mode — continuous back-and-forth"}
-                aria-label="Toggle voice conversation mode"
-              >
-                <Radio className="w-4 h-4" />
               </button>
               {isListening && (
                 <div className="flex items-center gap-1" aria-label="Voice recording active">
