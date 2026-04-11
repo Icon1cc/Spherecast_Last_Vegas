@@ -3,11 +3,12 @@
  * Orchestrates voice I/O, AI conversation, and navigation
  */
 
-import { useReducer, useCallback, useRef, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useReducer, useCallback, useRef, useEffect, useMemo } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useVoiceIO } from "./useVoiceIO";
 import { parseIntent, shouldEndDemo, hasNavigation } from "@/lib/intentParser";
 import type { DemoState, DemoAction, DemoPhase, TranscriptEntry, NavigationTarget } from "@/types/demo";
+import type { PageContext } from "@/lib/api";
 
 const AGNES_GREETING = "Hi, I'm Agnes. What would you like to explore?";
 
@@ -176,10 +177,31 @@ export interface UseAgnesDemoReturn {
 export function useAgnesDemo(options: UseAgnesDemoOptions = {}): UseAgnesDemoReturn {
   const [state, dispatch] = useReducer(demoReducer, initialState);
   const navigate = useNavigate();
+  const location = useLocation();
   const isProcessingRef = useRef(false);
   const pendingNavigationRef = useRef<NavigationTarget | null>(null);
   const noSpeechRetryCountRef = useRef(0);
   const MAX_NO_SPEECH_RETRIES = 3;
+
+  // Derive page context from current URL so Agnes knows what product/material is being viewed
+  const pageContext = useMemo((): PageContext | null => {
+    const match = location.pathname.match(/^\/analysis\/(\d+)\/(\d+)/);
+    if (match) {
+      const sp = new URLSearchParams(location.search);
+      return {
+        productId: match[1],
+        materialId: match[2],
+        productName: sp.get("product") ?? undefined,
+        materialName: sp.get("material") ?? undefined,
+      };
+    }
+    const productMatch = location.pathname.match(/^\/product\/(\d+)/);
+    if (productMatch) {
+      const sp = new URLSearchParams(location.search);
+      return { productId: productMatch[1], productName: sp.get("product") ?? undefined };
+    }
+    return null;
+  }, [location.pathname, location.search]);
 
   // Voice I/O setup
   const voiceIO = useVoiceIO({
@@ -224,7 +246,12 @@ export function useAgnesDemo(options: UseAgnesDemoOptions = {}): UseAgnesDemoRet
     const response = await fetch("/api/chat/message", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, history, isDemo: true }),
+      body: JSON.stringify({
+        message,
+        history,
+        isDemo: true,
+        pageContext: pageContext ?? null,
+      }),
     });
 
     if (!response.ok) {
@@ -233,7 +260,7 @@ export function useAgnesDemo(options: UseAgnesDemoOptions = {}): UseAgnesDemoRet
 
     const data = await response.json();
     return data.response as string;
-  }, []);
+  }, [pageContext]);
 
   /**
    * Execute navigation

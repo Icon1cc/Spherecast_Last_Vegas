@@ -117,8 +117,13 @@ export default async function handler(req, res) {
         getFullNavigationContext(pool),
         getDbContext(pool),
       ]);
+      console.log("[Chat API] DB context loaded:", {
+        products: navContext?.finishedGoods?.length || 0,
+        materials: navContext?.rawMaterials?.length || 0,
+        stats: dbContext,
+      });
     } catch (dbError) {
-      console.warn("Chat API DB context unavailable:", dbError);
+      console.error("Chat API DB context error:", dbError);
     } finally {
       if (pool) await pool.end();
     }
@@ -127,21 +132,28 @@ export default async function handler(req, res) {
     let contextPrompt = demoMode ? AGNES_DEMO_SYSTEM_PROMPT : AGNES_SYSTEM_PROMPT;
 
     if (dbContext) {
-      contextPrompt += `\n\nDatabase: ${dbContext.productCount} finished goods, ${dbContext.supplierCount} suppliers, ${dbContext.companyCount} companies.`;
+      contextPrompt += `\n\nDatabase contains: ${dbContext.productCount} finished goods, ${dbContext.supplierCount} suppliers, ${dbContext.companyCount} companies.`;
     }
 
-    if (navContext) {
+    if (navContext && navContext.finishedGoods && navContext.finishedGoods.length > 0) {
       // Full product list — Agnes matches user-mentioned SKUs/names semantically
       const productList = navContext.finishedGoods
-        .map(p => `  productId=${p.id}: "${p.name}"`)
+        .map(p => `  - productId=${p.id}: "${p.name}"`)
         .join("\n");
-      contextPrompt += `\n\nPRODUCTS (use [NAV:PRODUCT:id:name] to open BOM/ingredients):\n${productList}`;
+      contextPrompt += `\n\n=== PRODUCTS LIST (use [NAV:PRODUCT:id:name] to open BOM) ===\n${productList}`;
 
       // Full raw materials list with parent product — Agnes picks by ingredient name/synonym
-      const materialList = navContext.rawMaterials
-        .map(m => `  materialId=${m.material_id}, productId=${m.product_id}: "${m.material_name}" (in "${m.product_name}")`)
-        .join("\n");
-      contextPrompt += `\n\nRAW MATERIALS (use [NAV:ANALYSIS:productId:materialId:productName:materialName] to open supplier analysis):\n${materialList}\n\nMatch user intent to the correct IDs above. Use EXACT IDs — never invent them.`;
+      if (navContext.rawMaterials && navContext.rawMaterials.length > 0) {
+        const materialList = navContext.rawMaterials
+          .map(m => `  - materialId=${m.material_id}, productId=${m.product_id}: "${m.material_name}" (in product "${m.product_name}")`)
+          .join("\n");
+        contextPrompt += `\n\n=== RAW MATERIALS LIST (use [NAV:ANALYSIS:productId:materialId:productName:materialName] for supplier analysis) ===\n${materialList}`;
+      }
+
+      contextPrompt += `\n\n=== IMPORTANT ===\nUse ONLY the IDs from the lists above. NEVER invent or guess IDs. If user asks about something not in the lists, say you do not have that data.`;
+    } else {
+      console.warn("[Chat API] No navigation context available - products/materials lists empty");
+      contextPrompt += `\n\nNote: Product database is currently unavailable. Please ask the user to try again later.`;
     }
 
     // Inject current page context so Agnes stays focused on what the user is viewing
@@ -212,7 +224,8 @@ export default async function handler(req, res) {
       const chat = model.startChat({
         history: chatHistory,
         generationConfig: {
-          maxOutputTokens: demoMode ? 512 : GEMINI_MAX_OUTPUT_TOKENS,
+          // Use full token limit for demo too - truncation causes bad UX
+          maxOutputTokens: GEMINI_MAX_OUTPUT_TOKENS,
           temperature: demoMode ? 0.4 : GEMINI_TEMPERATURE,
         },
       });
