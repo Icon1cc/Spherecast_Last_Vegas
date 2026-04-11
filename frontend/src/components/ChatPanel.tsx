@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { X, Send, Mic, MicOff, Plus, Volume2, VolumeX, Headphones, Radio } from "lucide-react";
 import { format } from "date-fns";
 import type { ChatMessage, ChatSession } from "@/types/chat";
@@ -10,11 +10,8 @@ import {
   normalizeTextForSpeech,
   splitTextForSpeech,
   getAudioContextClass,
-  pickSupportedRecorderMimeType,
-  extensionForMimeType,
   calculateRMS,
   calculateDynamicThreshold,
-  parseNavigationCommands,
 } from "@/lib/voiceUtils";
 
 interface ChatPanelProps {
@@ -213,7 +210,6 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
   const speakerEnabledRef = useRef(true);
   const speechRequestIdRef = useRef(0);
 
-  const navigate = useNavigate();
   const location = useLocation();
 
   // Derive page context from current URL so Agnes knows what product/material is being viewed
@@ -252,29 +248,15 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
     voiceConversationModeRef.current = isVoiceConversationMode;
   }, [isVoiceConversationMode]);
 
-  /** Parse [NAV:...] commands out of a response, execute navigation, return clean text. */
-  const parseNavCommands = useCallback((text: string): string => {
-    const { cleanText, navCommands } = parseNavigationCommands(text);
-
-    // Execute all navigation commands
-    for (const cmd of navCommands) {
-      if (cmd.type === "DASHBOARD") {
-        navigate("/");
-      } else if (cmd.type === "PRODUCT" && cmd.productId) {
-        const qp = new URLSearchParams();
-        qp.set("product", String(cmd.productId));
-        if (cmd.productName) qp.set("name", cmd.productName);
-        navigate(`/?${qp.toString()}`);
-      } else if (cmd.type === "ANALYSIS" && cmd.productId && cmd.materialId) {
-        const qp = new URLSearchParams();
-        if (cmd.productName) qp.set("product", cmd.productName);
-        if (cmd.materialName) qp.set("material", cmd.materialName);
-        navigate(`/analysis/${cmd.productId}/${cmd.materialId}?${qp.toString()}`);
-      }
-    }
-
-    return cleanText;
-  }, [navigate]);
+  /** Strip [NAV:...], [ACTION:...], [HIGHLIGHT:...] commands from response - chatbot does NOT navigate */
+  const cleanResponseText = useCallback((text: string): string => {
+    return text
+      .replace(/\[NAV:[^\]]+\]/gi, "")
+      .replace(/\[ACTION:[^\]]+\]/gi, "")
+      .replace(/\[HIGHLIGHT:[^\]]+\]/gi, "")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+  }, []);
 
   const appendMessagesToSession = useCallback((sessionId: string, newMessages: ChatMessage[]) => {
     setSessions((prev) =>
@@ -441,10 +423,10 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
         const currentSession = sessions.find((s) => s.id === sessionId);
         const history = currentSession ? buildChatHistory(currentSession.messages) : [];
 
-        // isDemo=true only for voice (terse + nav); text uses full prompt (also has nav commands)
-        const response = await sendChatMessage(userText, history, speakResponse, pageContext);
-        // Parse and execute any navigation commands; get clean text for display + TTS
-        const cleanText = parseNavCommands(response.response);
+        // Chatbot does NOT navigate - isDemo=false always, uses full prompt for detailed answers
+        const response = await sendChatMessage(userText, history, false, pageContext);
+        // Strip any NAV commands from response - chatbot just answers questions
+        const cleanText = cleanResponseText(response.response);
         const assistantMessage = createMessage("assistant", cleanText);
         appendMessagesToSession(sessionId, [assistantMessage]);
 
@@ -470,7 +452,7 @@ const ChatPanel = ({ open, onClose }: ChatPanelProps) => {
         }
       }
     },
-    [appendMessagesToSession, sessions, speakText, parseNavCommands, pageContext]
+    [appendMessagesToSession, sessions, speakText, cleanResponseText, pageContext]
   );
 
   const stopListening = useCallback(() => {
