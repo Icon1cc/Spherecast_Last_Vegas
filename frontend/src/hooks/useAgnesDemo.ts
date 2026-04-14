@@ -528,15 +528,36 @@ export function useAgnesDemo(options: UseAgnesDemoOptions = {}): UseAgnesDemoRet
     }
 
     // Execute ALL page actions (supports multiple slider adjustments)
+    let hasSliderActions = false;
+    let hasUpdateAction = false;
+
     if (intent.actions && intent.actions.length > 0) {
       console.log("[Agnes] Executing", intent.actions.length, "actions");
       for (const act of intent.actions) {
+        if (act.action === "ADJUST_SLIDER" || act.action === "MAXIMIZE_SLIDER" || act.action === "MINIMIZE_SLIDER") {
+          hasSliderActions = true;
+        }
+        if (act.action === "UPDATE_ANALYSIS") {
+          hasUpdateAction = true;
+        }
         await executePageAction(act.action, act.params);
         await new Promise(resolve => setTimeout(resolve, 200)); // Small delay between actions
+      }
+
+      // Auto-click Update Analysis if sliders were adjusted but no UPDATE_ANALYSIS action was included
+      if (hasSliderActions && !hasUpdateAction) {
+        console.log("[Agnes] Auto-clicking Update Analysis after slider adjustments");
+        await executePageAction("UPDATE_ANALYSIS", {});
       }
     } else if (intent.action && intent.action !== "END_DEMO") {
       // Fallback for single action (backward compatibility)
       await executePageAction(intent.action, intent.actionParams);
+
+      // Auto-update for single slider action too
+      if (intent.action === "ADJUST_SLIDER" || intent.action === "MAXIMIZE_SLIDER" || intent.action === "MINIMIZE_SLIDER") {
+        console.log("[Agnes] Auto-clicking Update Analysis after slider adjustment");
+        await executePageAction("UPDATE_ANALYSIS", {});
+      }
     }
 
     // Clear navigation from intent BEFORE dispatching - we already navigated

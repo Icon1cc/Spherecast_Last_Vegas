@@ -22,12 +22,12 @@ export const VOICE_CONFIG = {
   maxDynamicSilenceThreshold: 0.15,  // Maximum for noisy environments
   silenceThresholdMultiplier: 3.0,   // Aggressive noise rejection
 
-  // Timing constants (milliseconds) - ALLOW LONG PAUSES
+  // Timing constants (milliseconds) - ALLOW VERY LONG PAUSES
   noiseCalibrationMs: 800,    // Calibration for noise baseline
-  silenceDurationMs: 3000,    // INCREASED from 1800 - allow 3 SECONDS of silence before ending
-  noSpeechTimeoutMs: 15000,   // INCREASED from 12000 - wait 15 seconds if no speech at all
-  maxRecordingMs: 45000,      // INCREASED from 30000 - allow 45 second recordings
-  minRecordingMs: 2000,       // INCREASED from 1500 - minimum 2 seconds before checking silence
+  silenceDurationMs: 4500,    // INCREASED to 4.5 SECONDS - allow long pauses to think
+  noSpeechTimeoutMs: 20000,   // INCREASED to 20 seconds if no speech at all
+  maxRecordingMs: 60000,      // INCREASED to 60 seconds max recording
+  minRecordingMs: 2500,       // INCREASED to 2.5 seconds minimum before checking silence
 
   // Noise filtering - consecutive frames required to confirm speech
   minSpeechFrames: 5,         // Require 5 consecutive frames above threshold
