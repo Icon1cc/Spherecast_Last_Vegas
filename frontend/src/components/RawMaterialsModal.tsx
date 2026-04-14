@@ -43,13 +43,14 @@ const RawMaterialsModal = ({
 
   return (
     <div
-      className="fixed inset-0 z-[110] flex items-center justify-center"
+      className="fixed inset-0 z-50 flex items-center justify-center"
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"
     >
+      {/* Reduced opacity backdrop - still allows seeing main content */}
       <div
-        className="absolute inset-0 bg-foreground/50 backdrop-blur-sm animate-fade-in"
+        className="absolute inset-0 bg-foreground/30 animate-fade-in"
         onClick={handleBackdropClick}
         aria-hidden="true"
       />

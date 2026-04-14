@@ -10,7 +10,7 @@ import { parseIntent, shouldEndDemo, hasNavigation } from "@/lib/intentParser";
 import type { DemoState, DemoAction, DemoPhase, TranscriptEntry, NavigationTarget } from "@/types/demo";
 import type { PageContext } from "@/lib/api";
 
-const AGNES_GREETING = "Hi, I am Agnes. What would you like to see?";
+const AGNES_GREETING = "Hi, I am Agnes, your AI guide for SupplyWise. I can help you explore products, explain raw materials, find the best suppliers, and answer your questions. What would you like to know?";
 
 const initialState: DemoState = {
   phase: "IDLE",

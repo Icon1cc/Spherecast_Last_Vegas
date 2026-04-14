@@ -159,18 +159,32 @@ export default async function handler(req, res) {
       contextPrompt += `\n\nNote: Product database is currently unavailable. Please ask the user to try again later.`;
     }
 
-    // Inject current page context so Agnes stays focused on what the user is viewing
+    // Inject current page context so Agnes knows what the user is viewing
     if (pageContext?.materialId) {
       const productLabel = pageContext.productName || `product ID ${pageContext.productId}`;
       const materialLabel = pageContext.materialName || `material ID ${pageContext.materialId}`;
-      contextPrompt += `\n\nCURRENT PAGE: User is on the supplier analysis page for "${materialLabel}" (materialId=${pageContext.materialId}) in "${productLabel}" (productId=${pageContext.productId}).
-IMPORTANT: The user can SEE the supplier analysis data on this page. Do NOT read out supplier names, scores, or recommendations - they can see that themselves.
-If user asks about this material, provide a brief summary like "You are viewing the supplier analysis for ${materialLabel}. The page shows the recommended suppliers and alternatives."
-If user asks for details, let them read the page - just say "The information is displayed on your screen."`;
+      contextPrompt += `\n\nCURRENT PAGE CONTEXT:
+The user is currently viewing the SUPPLIER ANALYSIS page for "${materialLabel}" (materialId=${pageContext.materialId}) in the product "${productLabel}" (productId=${pageContext.productId}).
+
+This page shows:
+- Recommended supplier with match score
+- Alternative suppliers ranked by score
+- Quality metrics radar chart
+- Parameter adjustment sliders (price, regulatory, certifications, supply risk, functional fit)
+- Substitution candidates (same molecule and same function alternatives)
+
+When the user asks about this page, explain what they are seeing. When they ask about suppliers, use the data from the raw materials list to give accurate information.`;
     } else if (pageContext?.productId) {
       const productLabel = pageContext.productName || `product ID ${pageContext.productId}`;
-      contextPrompt += `\n\nCURRENT PAGE: User is viewing the BOM (raw materials list) for "${productLabel}" (productId=${pageContext.productId}).
-IMPORTANT: The user can SEE the raw materials list on this page. When summarizing, only mention the common names of materials (like "vitamin D3", "magnesium"), not the full SKU codes or IDs.`;
+      contextPrompt += `\n\nCURRENT PAGE CONTEXT:
+The user is currently viewing the BOM (Bill of Materials) for "${productLabel}" (productId=${pageContext.productId}).
+
+This shows a list of raw materials that make up this product. Each material has an "Analysis" button that opens the supplier analysis page.
+
+When the user asks about raw materials, list them by their common names (extract from the SKU - e.g., "RM-C1-vitamin-d3-xxx" becomes "Vitamin D3").`;
+    } else {
+      contextPrompt += `\n\nCURRENT PAGE CONTEXT:
+The user is on the main Product Dashboard, which shows a list of finished goods (products). They can click on a product to see its raw materials, or use the search bar to find products.`;
     }
 
     const useSearch = !demoMode && needsWebSearch(message);

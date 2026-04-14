@@ -38,7 +38,7 @@ export const VOICE_CONFIG = {
   minAudioBytesForStt: 2048,  // INCREASED from 1024 - ensure enough data for valid audio
 
   // TTS chunking
-  ttsChunkMaxChars: 150,      // Smaller chunks for faster playback start
+  ttsChunkMaxChars: 250,      // INCREASED from 150 - allow longer sentences for better flow
 } as const;
 
 // Supported MIME types for MediaRecorder (in preference order)

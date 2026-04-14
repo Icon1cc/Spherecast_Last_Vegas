@@ -199,17 +199,15 @@ const AgnesDemoOverlay = memo(function AgnesDemoOverlay({
   return createPortal(
     <>
       {/*
-        IMPORTANT: NO backdrop or blur layer here!
-        Main content remains fully visible and interactive.
-        This is a sidebar overlay only.
+        IMPORTANT: Agnes sidebar is ALWAYS on top with z-[200]
+        This ensures it's visible even when modals are open
       */}
       <div
-        className="fixed right-0 top-0 bottom-0 w-96 z-[100] flex flex-col animate-slide-in-right"
+        className="fixed right-0 top-0 bottom-0 w-96 z-[200] flex flex-col animate-slide-in-right"
         style={{
-          background: "linear-gradient(180deg, rgba(15, 23, 42, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%)",
-          backdropFilter: "blur(8px)",
-          borderLeft: "1px solid rgba(255, 255, 255, 0.08)",
-          boxShadow: "-4px 0 24px rgba(0, 0, 0, 0.4)",
+          background: "linear-gradient(180deg, rgba(15, 23, 42, 0.98) 0%, rgba(15, 23, 42, 0.99) 100%)",
+          borderLeft: "1px solid rgba(255, 255, 255, 0.1)",
+          boxShadow: "-8px 0 32px rgba(0, 0, 0, 0.5)",
         }}
       >
         {/* Header */}
