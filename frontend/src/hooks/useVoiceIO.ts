@@ -258,22 +258,56 @@ export function useVoiceIO(options: UseVoiceIOOptions = {}): UseVoiceIOReturn {
   }, [stopAudioPlayback]);
 
   /**
+   * Full cleanup of all recording resources
+   */
+  const cleanupRecording = useCallback(() => {
+    // Stop and clear media recorder
+    if (mediaRecorderRef.current) {
+      if (mediaRecorderRef.current.state !== "inactive") {
+        try {
+          mediaRecorderRef.current.stop();
+        } catch (e) {
+          // Ignore errors when stopping
+        }
+      }
+      mediaRecorderRef.current.ondataavailable = null;
+      mediaRecorderRef.current.onstop = null;
+      mediaRecorderRef.current.onerror = null;
+      mediaRecorderRef.current = null;
+    }
+
+    // Clear audio chunks
+    audioChunksRef.current = [];
+
+    // Stop voice monitor
+    stopVoiceMonitor();
+
+    // Stop microphone tracks
+    stopMicrophoneTracks();
+
+    // Clear state refs
+    silenceStartTimestampRef.current = null;
+    speechDetectedRef.current = false;
+  }, [stopVoiceMonitor, stopMicrophoneTracks]);
+
+  /**
    * Stop listening
    */
   const stopListening = useCallback(() => {
     clearRecordingTimeouts();
-    stopVoiceMonitor();
 
     const recorder = mediaRecorderRef.current;
     if (!recorder || recorder.state === "inactive") {
+      cleanupRecording();
       setIsListening(false);
       options.onListeningEnd?.();
       return;
     }
 
+    // Let the onstop handler do the cleanup
     recorder.stop();
     setIsListening(false);
-  }, [clearRecordingTimeouts, stopVoiceMonitor, options]);
+  }, [clearRecordingTimeouts, cleanupRecording, options]);
 
   /**
    * Start listening for voice input
@@ -284,6 +318,12 @@ export function useVoiceIO(options: UseVoiceIOOptions = {}): UseVoiceIOReturn {
       return;
     }
 
+    // IMPORTANT: Clean up any previous recording session first
+    cleanupRecording();
+
+    // Small delay to ensure cleanup is complete
+    await new Promise(resolve => setTimeout(resolve, 50));
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -291,6 +331,7 @@ export function useVoiceIO(options: UseVoiceIOOptions = {}): UseVoiceIOReturn {
           noiseSuppression: true,
           autoGainControl: true,
           channelCount: 1,
+          sampleRate: 16000,  // Explicit sample rate for better compatibility
         },
       });
       mediaStreamRef.current = stream;
@@ -478,11 +519,10 @@ export function useVoiceIO(options: UseVoiceIOOptions = {}): UseVoiceIOReturn {
     } catch (error) {
       console.error("Microphone access failed:", error);
       options.onError?.(error instanceof Error ? error : new Error(String(error)), "stt");
-      stopVoiceMonitor();
-      stopMicrophoneTracks();
+      cleanupRecording();
       setIsListening(false);
     }
-  }, [options, stopListening, stopMicrophoneTracks, stopVoiceMonitor, transcribeAudio]);
+  }, [options, stopListening, cleanupRecording, transcribeAudio]);
 
   /**
    * Interrupt - stop speaking and start listening
