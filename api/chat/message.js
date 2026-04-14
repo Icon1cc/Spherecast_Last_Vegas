@@ -14,10 +14,24 @@ const SEARCH_TRIGGERS = [
   "search", "look up", "find online", "current", "latest", "recent",
   "news", "today", "2024", "2025", "2026", "price", "market",
   "what is the", "who is", "where is", "when did", "how much",
-  "regulation", "FDA", "EU regulation", "compliance update"
+  "regulation", "FDA", "EU regulation", "compliance update",
+  "history", "background", "information about", "tell me about",
+  "what does it do", "what is it for", "purpose", "uses"
 ];
 
-function needsWebSearch(message) {
+function needsWebSearch(message, isDemo) {
+  // Always enable web search for demo mode when asking about products
+  if (isDemo) {
+    const lowerMessage = message.toLowerCase();
+    // Trigger search for product info questions
+    if (lowerMessage.includes("history") ||
+        lowerMessage.includes("what does") ||
+        lowerMessage.includes("what is it") ||
+        lowerMessage.includes("purpose") ||
+        lowerMessage.includes("background")) {
+      return true;
+    }
+  }
   const lowerMessage = message.toLowerCase();
   return SEARCH_TRIGGERS.some(trigger => lowerMessage.includes(trigger));
 }
@@ -225,7 +239,7 @@ When the user asks about raw materials, list them by their common names (extract
 The user is on the main Product Dashboard, which shows a list of finished goods (products). They can click on a product to see its raw materials, or use the search bar to find products.`;
     }
 
-    const useSearch = !demoMode && needsWebSearch(message);
+    const useSearch = needsWebSearch(message, demoMode);
     const genAI = new GoogleGenerativeAI(apiKey);
 
     const chatHistory = [

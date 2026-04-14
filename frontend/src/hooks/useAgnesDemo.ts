@@ -370,29 +370,45 @@ export function useAgnesDemo(options: UseAgnesDemoOptions = {}): UseAgnesDemoRet
         // Adjust a slider on the analysis page
         const sliderName = params?.slider as string;
         const value = params?.value as number;
-        if (!sliderName || value === undefined) return;
+        if (!sliderName || value === undefined) {
+          console.warn("[Agnes] Missing slider name or value:", params);
+          return;
+        }
 
-        // Map slider names to their IDs
+        // Map slider names to their IDs (handle various formats)
         const sliderMap: Record<string, string> = {
           "price": "slider-price",
+          "cost": "slider-price",
           "regulatory": "slider-regulatory",
+          "compliance": "slider-regulatory",
           "certfit": "slider-certFit",
           "certification": "slider-certFit",
+          "cert": "slider-certFit",
           "supplyrisk": "slider-supplyRisk",
           "supply": "slider-supplyRisk",
+          "risk": "slider-supplyRisk",
           "functionalfit": "slider-functionalFit",
           "functional": "slider-functionalFit",
+          "function": "slider-functionalFit",
         };
 
-        const sliderId = sliderMap[sliderName.toLowerCase().replace(/\s+/g, "")];
+        const normalizedName = sliderName.toLowerCase().replace(/[\s_-]+/g, "");
+        const sliderId = sliderMap[normalizedName];
+
         if (sliderId) {
           const slider = document.getElementById(sliderId) as HTMLInputElement;
           if (slider) {
-            slider.value = String(value);
+            // Clamp value between 1 and 10
+            const clampedValue = Math.max(1, Math.min(10, value));
+            slider.value = String(clampedValue);
             slider.dispatchEvent(new Event("input", { bubbles: true }));
             slider.dispatchEvent(new Event("change", { bubbles: true }));
-            console.log("[Agnes] Adjusted slider:", sliderId, "to", value);
+            console.log("[Agnes] Adjusted slider:", sliderId, "to", clampedValue);
+          } else {
+            console.warn("[Agnes] Slider element not found:", sliderId);
           }
+        } else {
+          console.warn("[Agnes] Unknown slider name:", sliderName, "normalized:", normalizedName);
         }
         break;
       }
@@ -418,14 +434,18 @@ export function useAgnesDemo(options: UseAgnesDemoOptions = {}): UseAgnesDemoRet
       }
 
       case "UPDATE_ANALYSIS": {
-        // Click the "Update Analysis" button
-        const updateBtn = document.querySelector('button:contains("Update Analysis")') ||
-                         Array.from(document.querySelectorAll("button")).find(
-                           btn => btn.textContent?.toLowerCase().includes("update analysis")
-                         );
+        // Click the "Update Analysis" button - use valid selector
+        const buttons = document.querySelectorAll("button");
+        const updateBtn = Array.from(buttons).find(
+          btn => btn.textContent?.toLowerCase().includes("update")
+        );
         if (updateBtn) {
           (updateBtn as HTMLButtonElement).click();
           console.log("[Agnes] Clicked Update Analysis button");
+          // Wait for analysis to update
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } else {
+          console.warn("[Agnes] Update Analysis button not found");
         }
         break;
       }
@@ -437,8 +457,10 @@ export function useAgnesDemo(options: UseAgnesDemoOptions = {}): UseAgnesDemoRet
 
         for (const [name, value] of Object.entries(sliders)) {
           await executePageAction("ADJUST_SLIDER", { slider: name, value });
-          await new Promise(r => setTimeout(r, 100));
+          await new Promise(r => setTimeout(r, 150));
         }
+        // Auto-click update after setting sliders
+        await executePageAction("UPDATE_ANALYSIS", {});
         break;
       }
 
