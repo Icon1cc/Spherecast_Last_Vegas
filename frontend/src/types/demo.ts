@@ -32,6 +32,8 @@ export interface ParsedIntent {
   highlight?: string;
   action?: "END_DEMO" | "SHOW_PRODUCTS" | "CONTINUE" | "ADJUST_SLIDER" | "SCROLL_DOWN" | "SCROLL_UP" | "UPDATE_ANALYSIS" | "SET_ALL_SLIDERS" | "MAXIMIZE_SLIDER" | "MINIMIZE_SLIDER";
   actionParams?: Record<string, unknown>;
+  // Support multiple actions (e.g., multiple slider adjustments)
+  actions?: Array<{ action: string; params?: Record<string, unknown> }>;
 }
 
 export interface DemoState {

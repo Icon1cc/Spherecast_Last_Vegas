@@ -174,22 +174,22 @@ export function parseIntent(response: string, userMessage?: string): ParsedInten
     speech = speech.replace(highlightMatch[0], "");
   }
 
-  // Parse action commands
-  // [ACTION:ADJUST_SLIDER:price:10]
-  const sliderMatch = sanitizedResponse.match(/\[ACTION:ADJUST_SLIDER:(\w+):(\d+)\]/i);
-  if (sliderMatch) {
-    action = "ADJUST_SLIDER";
-    actionParams = {
-      slider: sliderMatch[1],
-      value: parseInt(sliderMatch[2], 10),
-    };
-    speech = speech.replace(sliderMatch[0], "");
+  // Collect ALL actions (supports multiple slider adjustments)
+  const actions: Array<{ action: string; params?: Record<string, unknown> }> = [];
+
+  // Parse ALL [ACTION:ADJUST_SLIDER:name:value] commands (there can be multiple)
+  const sliderMatches = sanitizedResponse.matchAll(/\[ACTION:ADJUST_SLIDER:(\w+):(\d+)\]/gi);
+  for (const match of sliderMatches) {
+    actions.push({
+      action: "ADJUST_SLIDER",
+      params: { slider: match[1], value: parseInt(match[2], 10) }
+    });
+    speech = speech.replace(match[0], "");
   }
 
   // [ACTION:SET_SLIDERS:price=10,regulatory=8,certFit=9]
   const multiSliderMatch = sanitizedResponse.match(/\[ACTION:SET_SLIDERS:([^\]]+)\]/i);
   if (multiSliderMatch) {
-    action = "SET_ALL_SLIDERS";
     const slidersStr = multiSliderMatch[1];
     const sliders: Record<string, number> = {};
     slidersStr.split(",").forEach(pair => {
@@ -198,23 +198,23 @@ export function parseIntent(response: string, userMessage?: string): ParsedInten
         sliders[name.trim()] = parseInt(val.trim(), 10);
       }
     });
-    actionParams = { sliders };
+    actions.push({ action: "SET_ALL_SLIDERS", params: { sliders } });
     speech = speech.replace(multiSliderMatch[0], "");
   }
 
-  // [ACTION:MAXIMIZE:price] or [ACTION:MINIMIZE:price]
-  const maxMinMatch = sanitizedResponse.match(/\[ACTION:(MAXIMIZE|MINIMIZE):(\w+)\]/i);
-  if (maxMinMatch) {
-    action = maxMinMatch[1].toUpperCase() === "MAXIMIZE" ? "MAXIMIZE_SLIDER" : "MINIMIZE_SLIDER";
-    actionParams = { slider: maxMinMatch[2] };
-    speech = speech.replace(maxMinMatch[0], "");
+  // [ACTION:MAXIMIZE:name] or [ACTION:MINIMIZE:name]
+  const maxMinMatches = sanitizedResponse.matchAll(/\[ACTION:(MAXIMIZE|MINIMIZE):(\w+)\]/gi);
+  for (const match of maxMinMatches) {
+    const actionType = match[1].toUpperCase() === "MAXIMIZE" ? "MAXIMIZE_SLIDER" : "MINIMIZE_SLIDER";
+    actions.push({ action: actionType, params: { slider: match[2] } });
+    speech = speech.replace(match[0], "");
   }
 
-  // Simple actions
-  const simpleActionMatch = sanitizedResponse.match(/\[ACTION:(SCROLL_DOWN|SCROLL_UP|SCROLL_TO_TOP|SCROLL_TO_BOTTOM|UPDATE_ANALYSIS)\]/i);
-  if (simpleActionMatch) {
-    action = simpleActionMatch[1].toUpperCase() as ParsedIntent["action"];
-    speech = speech.replace(simpleActionMatch[0], "");
+  // Simple actions: SCROLL_DOWN, UPDATE_ANALYSIS, etc.
+  const simpleActionMatches = sanitizedResponse.matchAll(/\[ACTION:(SCROLL_DOWN|SCROLL_UP|SCROLL_TO_TOP|SCROLL_TO_BOTTOM|UPDATE_ANALYSIS)\]/gi);
+  for (const match of simpleActionMatches) {
+    actions.push({ action: match[1].toUpperCase() });
+    speech = speech.replace(match[0], "");
   }
 
   // [ACTION:END_DEMO]
@@ -224,8 +224,17 @@ export function parseIntent(response: string, userMessage?: string): ParsedInten
     speech = speech.replace(endMatch[0], "");
   }
 
+  // For backward compatibility, set action/actionParams from first action
+  if (actions.length > 0 && !action) {
+    const firstAction = actions[0];
+    action = firstAction.action as ParsedIntent["action"];
+    actionParams = firstAction.params;
+  }
+
   // Clean up speech - remove extra whitespace and markdown
   speech = cleanSpeechText(speech);
+
+  console.log("[IntentParser] Parsed actions:", actions);
 
   return {
     speech,
@@ -233,6 +242,7 @@ export function parseIntent(response: string, userMessage?: string): ParsedInten
     highlight,
     action,
     actionParams,
+    actions: actions.length > 0 ? actions : undefined,
   };
 }
 

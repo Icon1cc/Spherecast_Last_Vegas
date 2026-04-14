@@ -505,6 +505,7 @@ export function useAgnesDemo(options: UseAgnesDemoOptions = {}): UseAgnesDemoRet
       hasNavigation: !!intent.navigation,
       navigationType: intent.navigation?.type,
       action: intent.action,
+      actionsCount: intent.actions?.length || 0,
     });
 
     // Check if demo should end
@@ -521,13 +522,20 @@ export function useAgnesDemo(options: UseAgnesDemoOptions = {}): UseAgnesDemoRet
       console.log("[Agnes] Navigating FIRST:", intent.navigation);
       await executeNavigation(intent.navigation);
       // Small delay for page to render
-      await new Promise(resolve => setTimeout(resolve, 500)); // Increased delay
+      await new Promise(resolve => setTimeout(resolve, 500));
     } else {
       console.log("[Agnes] No navigation in intent");
     }
 
-    // Execute any page actions (sliders, scroll, etc.)
-    if (intent.action && intent.action !== "END_DEMO") {
+    // Execute ALL page actions (supports multiple slider adjustments)
+    if (intent.actions && intent.actions.length > 0) {
+      console.log("[Agnes] Executing", intent.actions.length, "actions");
+      for (const act of intent.actions) {
+        await executePageAction(act.action, act.params);
+        await new Promise(resolve => setTimeout(resolve, 200)); // Small delay between actions
+      }
+    } else if (intent.action && intent.action !== "END_DEMO") {
+      // Fallback for single action (backward compatibility)
       await executePageAction(intent.action, intent.actionParams);
     }
 
