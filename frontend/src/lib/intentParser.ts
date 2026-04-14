@@ -35,6 +35,21 @@ const NAVIGATION_KEYWORDS = [
   "view this",
   "see the",
   "look at",
+  // Conversational confirmations (when Agnes offers to show something)
+  "yes",
+  "yeah",
+  "sure",
+  "ok",
+  "okay",
+  "please",
+  "i would like",
+  "i want to",
+  "i'd like",
+  "let's see",
+  "go ahead",
+  "do it",
+  "see it",
+  "show it",
 ];
 
 /**

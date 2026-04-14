@@ -63,7 +63,7 @@ const AgnesDemoOverlay = memo(function AgnesDemoOverlay({
   }, [isOpen, isActive, startDemo]);
 
   // Barge-in: Monitor mic during SPEAKING phase and auto-interrupt when user speaks
-  // IMPROVED: Lower threshold and faster detection for immediate interruption
+  // TUNED: Higher threshold to avoid false triggers from background noise, but still catch real speech
   useEffect(() => {
     if (phase !== "SPEAKING") {
       // Clean up when not speaking
@@ -75,6 +75,10 @@ const AgnesDemoOverlay = memo(function AgnesDemoOverlay({
         audioContextRef.current.close();
         audioContextRef.current = null;
       }
+      if (bargeInTimeoutRef.current) {
+        window.cancelAnimationFrame(bargeInTimeoutRef.current);
+        bargeInTimeoutRef.current = null;
+      }
       return;
     }
 
@@ -85,7 +89,7 @@ const AgnesDemoOverlay = memo(function AgnesDemoOverlay({
           audio: {
             echoCancellation: true,
             noiseSuppression: true,
-            autoGainControl: false,  // Disable AGC for more consistent levels
+            autoGainControl: true,  // Enable AGC for consistent levels
           },
         });
         micStreamRef.current = stream;
@@ -98,24 +102,25 @@ const AgnesDemoOverlay = memo(function AgnesDemoOverlay({
         const analyser = audioContext.createAnalyser();
         const source = audioContext.createMediaStreamSource(stream);
 
-        analyser.fftSize = 256;  // Smaller for faster processing
-        analyser.smoothingTimeConstant = 0.1;  // Less smoothing for faster response
+        analyser.fftSize = 512;  // Balanced for accuracy
+        analyser.smoothingTimeConstant = 0.3;  // More smoothing to filter transient noise
         source.connect(analyser);
 
         audioContextRef.current = audioContext;
         analyserRef.current = analyser;
 
         const waveform = new Uint8Array(analyser.fftSize);
-        let speechStartTime: number | null = null;
+        let consecutiveSpeechFrames = 0;
 
-        // IMPROVED: Lower threshold (0.025) and shorter duration (100ms) for faster interruption
-        const BARGE_IN_THRESHOLD = 0.025;
-        const BARGE_IN_DURATION_MS = 100;
+        // TUNED: Higher thresholds for reliable barge-in
+        const BASE_BARGE_IN_THRESHOLD = 0.08;  // INCREASED from 0.025
+        const REQUIRED_SPEECH_FRAMES = 8;      // INCREASED - need consistent speech
+        const CALIBRATION_FRAMES = 20;         // More frames for better calibration
 
         // Calibrate ambient noise level first
         let ambientLevel = 0;
         let calibrationFrames = 0;
-        const CALIBRATION_FRAMES = 10;
+        let maxCalibrationLevel = 0;
 
         const checkForBargeIn = () => {
           if (phase !== "SPEAKING" || !analyserRef.current) return;
@@ -130,26 +135,33 @@ const AgnesDemoOverlay = memo(function AgnesDemoOverlay({
 
           // Calibration phase - establish ambient noise floor
           if (calibrationFrames < CALIBRATION_FRAMES) {
-            ambientLevel = Math.max(ambientLevel, rms);
+            ambientLevel += rms;
+            maxCalibrationLevel = Math.max(maxCalibrationLevel, rms);
             calibrationFrames++;
             bargeInTimeoutRef.current = window.requestAnimationFrame(checkForBargeIn);
             return;
           }
 
-          // Dynamic threshold: ambient noise + fixed threshold
-          const dynamicThreshold = Math.max(BARGE_IN_THRESHOLD, ambientLevel * 1.8);
+          // Use average + max for robust threshold
+          const avgAmbient = ambientLevel / CALIBRATION_FRAMES;
+          // Dynamic threshold: significantly above ambient noise
+          const dynamicThreshold = Math.max(
+            BASE_BARGE_IN_THRESHOLD,
+            avgAmbient * 3.0,      // 3x average ambient
+            maxCalibrationLevel * 2.0  // 2x max seen during calibration
+          );
 
           if (rms >= dynamicThreshold) {
-            if (!speechStartTime) {
-              speechStartTime = performance.now();
-            } else if (performance.now() - speechStartTime >= BARGE_IN_DURATION_MS) {
-              // User has been speaking long enough - interrupt immediately!
-              console.log("[Agnes] Barge-in detected, RMS:", rms.toFixed(4), "threshold:", dynamicThreshold.toFixed(4));
+            consecutiveSpeechFrames++;
+            if (consecutiveSpeechFrames >= REQUIRED_SPEECH_FRAMES) {
+              // User has been speaking long enough - interrupt!
+              console.log("[Agnes] Barge-in detected! RMS:", rms.toFixed(4), "threshold:", dynamicThreshold.toFixed(4), "frames:", consecutiveSpeechFrames);
               interrupt();
               return;
             }
           } else {
-            speechStartTime = null;
+            // Reset if noise level drops
+            consecutiveSpeechFrames = Math.max(0, consecutiveSpeechFrames - 2);  // Gradual decay
           }
 
           bargeInTimeoutRef.current = window.requestAnimationFrame(checkForBargeIn);

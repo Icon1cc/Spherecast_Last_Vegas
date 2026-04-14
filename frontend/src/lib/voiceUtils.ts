@@ -16,29 +16,29 @@ export const VOICE_CONFIG = {
   ttsModelId: import.meta.env.VITE_ELEVENLABS_TTS_MODEL_ID?.trim() || "eleven_multilingual_v2",
   sttModelId: import.meta.env.VITE_ELEVENLABS_STT_MODEL_ID?.trim() || "scribe_v1",
 
-  // Voice detection thresholds (tuned for reliable speech detection with noise filtering)
-  baseSilenceThreshold: 0.035,        // Filter ambient noise
-  minDynamicSilenceThreshold: 0.025,  // Minimum threshold for quiet rooms
-  maxDynamicSilenceThreshold: 0.10,   // Maximum for noisy environments
-  silenceThresholdMultiplier: 2.5,    // Multiplier for dynamic threshold
+  // Voice detection thresholds - HIGHER to filter background noise
+  baseSilenceThreshold: 0.06,        // INCREASED from 0.035 - ignore more background noise
+  minDynamicSilenceThreshold: 0.045, // INCREASED from 0.025 - minimum threshold for quiet rooms
+  maxDynamicSilenceThreshold: 0.15,  // INCREASED from 0.10 - maximum for noisy environments
+  silenceThresholdMultiplier: 3.0,   // INCREASED from 2.5 - more aggressive noise rejection
 
   // Timing constants (milliseconds) - ALLOW PAUSES FOR BREATHING
-  noiseCalibrationMs: 500,    // Calibration period for ambient noise
-  silenceDurationMs: 1800,    // INCREASED from 800 - allow 1.8 seconds of silence before ending
-  noSpeechTimeoutMs: 12000,   // INCREASED from 8000 - wait 12 seconds if no speech at all
-  maxRecordingMs: 30000,      // INCREASED from 20000 - allow longer recordings
-  minRecordingMs: 1200,       // INCREASED from 500 - minimum 1.2 seconds before checking silence
+  noiseCalibrationMs: 800,    // INCREASED from 500 - longer calibration for better noise baseline
+  silenceDurationMs: 1800,    // Allow 1.8 seconds of silence before ending
+  noSpeechTimeoutMs: 12000,   // Wait 12 seconds if no speech at all
+  maxRecordingMs: 30000,      // Allow longer recordings
+  minRecordingMs: 1500,       // INCREASED from 1200 - minimum 1.5 seconds before checking silence
 
   // Noise filtering - consecutive frames required to confirm speech
-  minSpeechFrames: 3,         // Require 3 consecutive frames above threshold
-  noiseFloorDecay: 0.98,      // Slowly decay noise floor estimate
+  minSpeechFrames: 5,         // INCREASED from 3 - require 5 consecutive frames above threshold
+  noiseFloorDecay: 0.995,     // INCREASED from 0.98 - slower decay for stable noise floor
 
   // Audio validation
-  minAudioDurationMs: 500,    // NEW: Minimum audio duration to be valid
-  minAudioBytesForStt: 2048,  // INCREASED from 1024 - ensure enough data for valid audio
+  minAudioDurationMs: 600,    // INCREASED from 500 - minimum audio duration to be valid
+  minAudioBytesForStt: 3000,  // INCREASED from 2048 - ensure enough data for valid audio
 
   // TTS chunking
-  ttsChunkMaxChars: 250,      // INCREASED from 150 - allow longer sentences for better flow
+  ttsChunkMaxChars: 250,      // Allow longer sentences for better flow
 } as const;
 
 // Supported MIME types for MediaRecorder (in preference order)
