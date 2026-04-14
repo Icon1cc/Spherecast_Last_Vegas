@@ -163,10 +163,14 @@ export default async function handler(req, res) {
     if (pageContext?.materialId) {
       const productLabel = pageContext.productName || `product ID ${pageContext.productId}`;
       const materialLabel = pageContext.materialName || `material ID ${pageContext.materialId}`;
-      contextPrompt += `\n\nCURRENT PAGE: User is on the supplier analysis page for "${materialLabel}" (materialId=${pageContext.materialId}) in "${productLabel}" (productId=${pageContext.productId}). Answer about this material unless the user asks about something else. Do NOT ask them to select a product.`;
+      contextPrompt += `\n\nCURRENT PAGE: User is on the supplier analysis page for "${materialLabel}" (materialId=${pageContext.materialId}) in "${productLabel}" (productId=${pageContext.productId}).
+IMPORTANT: The user can SEE the supplier analysis data on this page. Do NOT read out supplier names, scores, or recommendations - they can see that themselves.
+If user asks about this material, provide a brief summary like "You are viewing the supplier analysis for ${materialLabel}. The page shows the recommended suppliers and alternatives."
+If user asks for details, let them read the page - just say "The information is displayed on your screen."`;
     } else if (pageContext?.productId) {
       const productLabel = pageContext.productName || `product ID ${pageContext.productId}`;
-      contextPrompt += `\n\nCURRENT PAGE: User is viewing the BOM for "${productLabel}" (productId=${pageContext.productId}).`;
+      contextPrompt += `\n\nCURRENT PAGE: User is viewing the BOM (raw materials list) for "${productLabel}" (productId=${pageContext.productId}).
+IMPORTANT: The user can SEE the raw materials list on this page. When summarizing, only mention the common names of materials (like "vitamin D3", "magnesium"), not the full SKU codes or IDs.`;
     }
 
     const useSearch = !demoMode && needsWebSearch(message);

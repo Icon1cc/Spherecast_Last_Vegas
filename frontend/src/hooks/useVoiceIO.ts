@@ -304,14 +304,14 @@ export function useVoiceIO(options: UseVoiceIOOptions = {}): UseVoiceIOReturn {
         }
       };
 
-      // Set up audio analysis for silence detection
+      // Set up audio analysis for silence detection with improved noise filtering
       if (AudioContextClass) {
         const audioContext = new AudioContextClass();
         const analyser = audioContext.createAnalyser();
         const source = audioContext.createMediaStreamSource(stream);
 
         analyser.fftSize = 2048;
-        analyser.smoothingTimeConstant = 0.2;
+        analyser.smoothingTimeConstant = 0.3;  // Increased for noise smoothing
         source.connect(analyser);
 
         audioContextRef.current = audioContext;
@@ -323,6 +323,11 @@ export function useVoiceIO(options: UseVoiceIOOptions = {}): UseVoiceIOReturn {
         const recordingStartedAt = performance.now();
         const calibrationSamples: number[] = [];
 
+        // IMPROVED: Consecutive frame tracking for noise filtering
+        let consecutiveSpeechFrames = 0;
+        const MIN_SPEECH_FRAMES = VOICE_CONFIG.minSpeechFrames || 3;
+        let noiseFloor = VOICE_CONFIG.baseSilenceThreshold;
+
         const monitorAudio = (timestamp: number) => {
           if (mediaRecorderRef.current?.state !== "recording") return;
 
@@ -332,29 +337,48 @@ export function useVoiceIO(options: UseVoiceIOOptions = {}): UseVoiceIOReturn {
           // Calibration phase - collect ambient noise samples
           if (!speechDetectedRef.current && timestamp <= calibrationEndAt) {
             calibrationSamples.push(rms);
+            // Update noise floor estimate
+            noiseFloor = Math.max(noiseFloor, rms * 1.1);
           }
 
+          // Use peak of calibration samples for more robust noise floor
+          const calibrationPeak =
+            calibrationSamples.length > 0
+              ? Math.max(...calibrationSamples.slice(-10))  // Use recent peak
+              : VOICE_CONFIG.baseSilenceThreshold;
+
+          // Use higher of average and peak for threshold calculation
           const calibrationAverage =
             calibrationSamples.length > 0
               ? calibrationSamples.reduce((a, v) => a + v, 0) / calibrationSamples.length
               : VOICE_CONFIG.baseSilenceThreshold;
 
-          const dynamicThreshold = calculateDynamicThreshold(calibrationAverage);
+          const effectiveCalibration = Math.max(calibrationAverage, calibrationPeak * 0.7, noiseFloor);
+          const dynamicThreshold = calculateDynamicThreshold(effectiveCalibration);
 
-          // Any sound above threshold = speech detected
+          // Slowly decay noise floor estimate (adapts to changing ambient noise)
+          noiseFloor = noiseFloor * (VOICE_CONFIG.noiseFloorDecay || 0.98);
+
+          // IMPROVED: Require consecutive frames above threshold (filters transient noise)
           if (rms >= dynamicThreshold) {
-            speechDetectedRef.current = true;
-            silenceStartTimestampRef.current = null;
-          } else if (speechDetectedRef.current) {
-            // Only start silence timer after minimum recording time
-            const elapsedMs = timestamp - recordingStartedAt;
-            if (elapsedMs >= MIN_RECORDING_MS) {
-              if (silenceStartTimestampRef.current === null) {
-                silenceStartTimestampRef.current = timestamp;
-              }
-              if (timestamp - silenceStartTimestampRef.current >= SILENCE_DURATION_MS) {
-                stopRecordingFromMonitor();
-                return;
+            consecutiveSpeechFrames++;
+            if (consecutiveSpeechFrames >= MIN_SPEECH_FRAMES) {
+              speechDetectedRef.current = true;
+              silenceStartTimestampRef.current = null;
+            }
+          } else {
+            consecutiveSpeechFrames = 0;
+            if (speechDetectedRef.current) {
+              // Only start silence timer after minimum recording time
+              const elapsedMs = timestamp - recordingStartedAt;
+              if (elapsedMs >= MIN_RECORDING_MS) {
+                if (silenceStartTimestampRef.current === null) {
+                  silenceStartTimestampRef.current = timestamp;
+                }
+                if (timestamp - silenceStartTimestampRef.current >= SILENCE_DURATION_MS) {
+                  stopRecordingFromMonitor();
+                  return;
+                }
               }
             }
           }

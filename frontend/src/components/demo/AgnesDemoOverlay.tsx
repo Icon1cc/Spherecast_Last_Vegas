@@ -1,12 +1,13 @@
 /**
  * AgnesDemoOverlay - Sidebar overlay for Agnes Demo Mode
  * Shows as a side panel while user can see the main app
+ * Clean, transparent design - no blur on main content
  */
 
 import { memo, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
-import { X, Mic, Volume2, VolumeX } from "lucide-react";
-import AgnesSphere from "./AgnesSphere";
+import { X, Mic, Volume2 } from "lucide-react";
+import AgnesVoiceOrb from "./AgnesVoiceOrb";
 import { useAgnesDemo } from "@/hooks/useAgnesDemo";
 import type { DemoPhase } from "@/types/demo";
 
@@ -62,6 +63,7 @@ const AgnesDemoOverlay = memo(function AgnesDemoOverlay({
   }, [isOpen, isActive, startDemo]);
 
   // Barge-in: Monitor mic during SPEAKING phase and auto-interrupt when user speaks
+  // IMPROVED: Lower threshold and faster detection for immediate interruption
   useEffect(() => {
     if (phase !== "SPEAKING") {
       // Clean up when not speaking
@@ -80,7 +82,11 @@ const AgnesDemoOverlay = memo(function AgnesDemoOverlay({
     const startBargeInMonitor = async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true },
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: false,  // Disable AGC for more consistent levels
+          },
         });
         micStreamRef.current = stream;
 
@@ -92,8 +98,8 @@ const AgnesDemoOverlay = memo(function AgnesDemoOverlay({
         const analyser = audioContext.createAnalyser();
         const source = audioContext.createMediaStreamSource(stream);
 
-        analyser.fftSize = 512;
-        analyser.smoothingTimeConstant = 0.3;
+        analyser.fftSize = 256;  // Smaller for faster processing
+        analyser.smoothingTimeConstant = 0.1;  // Less smoothing for faster response
         source.connect(analyser);
 
         audioContextRef.current = audioContext;
@@ -101,8 +107,15 @@ const AgnesDemoOverlay = memo(function AgnesDemoOverlay({
 
         const waveform = new Uint8Array(analyser.fftSize);
         let speechStartTime: number | null = null;
-        const BARGE_IN_THRESHOLD = 0.04; // Sensitivity for detecting user speech
-        const BARGE_IN_DURATION_MS = 300; // Must speak for 300ms to trigger interrupt
+
+        // IMPROVED: Lower threshold (0.025) and shorter duration (100ms) for faster interruption
+        const BARGE_IN_THRESHOLD = 0.025;
+        const BARGE_IN_DURATION_MS = 100;
+
+        // Calibrate ambient noise level first
+        let ambientLevel = 0;
+        let calibrationFrames = 0;
+        const CALIBRATION_FRAMES = 10;
 
         const checkForBargeIn = () => {
           if (phase !== "SPEAKING" || !analyserRef.current) return;
@@ -115,12 +128,23 @@ const AgnesDemoOverlay = memo(function AgnesDemoOverlay({
           }
           const rms = Math.sqrt(sum / waveform.length);
 
-          if (rms >= BARGE_IN_THRESHOLD) {
+          // Calibration phase - establish ambient noise floor
+          if (calibrationFrames < CALIBRATION_FRAMES) {
+            ambientLevel = Math.max(ambientLevel, rms);
+            calibrationFrames++;
+            bargeInTimeoutRef.current = window.requestAnimationFrame(checkForBargeIn);
+            return;
+          }
+
+          // Dynamic threshold: ambient noise + fixed threshold
+          const dynamicThreshold = Math.max(BARGE_IN_THRESHOLD, ambientLevel * 1.8);
+
+          if (rms >= dynamicThreshold) {
             if (!speechStartTime) {
               speechStartTime = performance.now();
             } else if (performance.now() - speechStartTime >= BARGE_IN_DURATION_MS) {
-              // User has been speaking long enough - interrupt!
-              console.log("Barge-in detected, interrupting Agnes");
+              // User has been speaking long enough - interrupt immediately!
+              console.log("[Agnes] Barge-in detected, RMS:", rms.toFixed(4), "threshold:", dynamicThreshold.toFixed(4));
               interrupt();
               return;
             }
@@ -174,51 +198,69 @@ const AgnesDemoOverlay = memo(function AgnesDemoOverlay({
 
   return createPortal(
     <>
-      {/* Sidebar panel - NO backdrop blur, user can see and interact with main content */}
-      <div className="fixed right-0 top-0 bottom-0 w-80 z-[100] bg-gradient-to-b from-slate-900 to-slate-950 border-l border-white/10 shadow-2xl flex flex-col animate-slide-in-right">
+      {/*
+        IMPORTANT: NO backdrop or blur layer here!
+        Main content remains fully visible and interactive.
+        This is a sidebar overlay only.
+      */}
+      <div
+        className="fixed right-0 top-0 bottom-0 w-96 z-[100] flex flex-col animate-slide-in-right"
+        style={{
+          background: "linear-gradient(180deg, rgba(15, 23, 42, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%)",
+          backdropFilter: "blur(8px)",
+          borderLeft: "1px solid rgba(255, 255, 255, 0.08)",
+          boxShadow: "-4px 0 24px rgba(0, 0, 0, 0.4)",
+        }}
+      >
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-white/10">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
           <div>
-            <h2 className="text-white font-semibold">Agnes</h2>
-            <p className="text-white/50 text-xs">Voice Assistant</p>
+            <h2 className="text-white font-semibold text-lg">Agnes</h2>
+            <p className="text-white/40 text-xs">AI Voice Assistant</p>
           </div>
           <button
             onClick={handleClose}
-            className="p-2 rounded-full hover:bg-white/10 text-white/60 hover:text-white transition-colors"
+            className="p-2.5 rounded-full hover:bg-white/10 text-white/50 hover:text-white transition-all duration-200"
             aria-label="Close"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Sphere and status */}
-        <div className="flex flex-col items-center py-6 border-b border-white/5">
-          <AgnesSphere phase={phase} size="md" />
+        {/* Voice Orb and status */}
+        <div className="flex flex-col items-center py-8 border-b border-white/5">
+          <AgnesVoiceOrb phase={phase} size="md" />
 
-          <div className="flex items-center gap-2 mt-4">
+          <div className="flex items-center gap-2.5 mt-6">
             {phase === "LISTENING" && (
-              <span className="relative flex h-2 w-2">
+              <span className="relative flex h-2.5 w-2.5">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500" />
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-500" />
               </span>
             )}
             {phase === "THINKING" && (
-              <div className="w-2 h-2 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+              <div className="w-2.5 h-2.5 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
             )}
             {phase === "SPEAKING" && (
               <Volume2 className="w-4 h-4 text-green-400 animate-pulse" />
             )}
-            <span className="text-white/60 text-xs font-medium uppercase tracking-wider">
+            <span className="text-white/50 text-sm font-medium uppercase tracking-widest">
               {statusText}
             </span>
           </div>
         </div>
 
         {/* Current speech / Last message */}
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 overflow-y-auto px-5 py-4">
           {currentSpeech && phase === "SPEAKING" && (
-            <div className="bg-white/5 rounded-lg p-3 mb-3">
-              <p className="text-xs text-green-400/70 mb-1">Agnes</p>
+            <div
+              className="rounded-xl p-4 mb-4"
+              style={{
+                background: "linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(34, 197, 94, 0.05) 100%)",
+                border: "1px solid rgba(34, 197, 94, 0.15)",
+              }}
+            >
+              <p className="text-xs text-green-400/60 mb-1.5 font-medium">Agnes</p>
               <p className="text-white/90 text-sm leading-relaxed">
                 {currentSpeech}
               </p>
@@ -226,22 +268,30 @@ const AgnesDemoOverlay = memo(function AgnesDemoOverlay({
           )}
 
           {/* Transcript */}
-          <div className="space-y-2">
+          <div className="space-y-3">
             {transcript.slice(-6).map((entry) => (
               <div
                 key={entry.id}
-                className={`rounded-lg p-2 ${
+                className={`rounded-xl p-3.5 transition-all duration-200 ${
                   entry.role === "user"
-                    ? "bg-blue-500/10 ml-4"
-                    : "bg-white/5 mr-4"
+                    ? "ml-6"
+                    : "mr-6"
                 }`}
+                style={{
+                  background: entry.role === "user"
+                    ? "linear-gradient(135deg, rgba(59, 130, 246, 0.12) 0%, rgba(59, 130, 246, 0.06) 100%)"
+                    : "rgba(255, 255, 255, 0.04)",
+                  border: entry.role === "user"
+                    ? "1px solid rgba(59, 130, 246, 0.15)"
+                    : "1px solid rgba(255, 255, 255, 0.05)",
+                }}
               >
-                <p className={`text-xs mb-1 ${
-                  entry.role === "user" ? "text-blue-400/70" : "text-white/40"
+                <p className={`text-xs mb-1.5 font-medium ${
+                  entry.role === "user" ? "text-blue-400/60" : "text-white/30"
                 }`}>
                   {entry.role === "user" ? "You" : "Agnes"}
                 </p>
-                <p className={`text-sm ${
+                <p className={`text-sm leading-relaxed ${
                   entry.role === "user" ? "text-blue-200/90" : "text-white/70"
                 }`}>
                   {entry.text}
@@ -252,18 +302,28 @@ const AgnesDemoOverlay = memo(function AgnesDemoOverlay({
         </div>
 
         {/* Bottom controls */}
-        <div className="p-4 border-t border-white/10">
+        <div className="p-5 border-t border-white/5">
           {phase === "SPEAKING" ? (
             <button
               onClick={handleInterrupt}
-              className="w-full flex items-center justify-center gap-2 py-3 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors"
+              className="w-full flex items-center justify-center gap-2.5 py-3.5 rounded-xl transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+              style={{
+                background: "linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%)",
+                border: "1px solid rgba(255, 255, 255, 0.1)",
+              }}
             >
-              <Mic className="w-4 h-4" />
-              <span className="text-sm">Tap or speak to interrupt</span>
+              <Mic className="w-4 h-4 text-white/70" />
+              <span className="text-sm text-white/80 font-medium">Tap or speak to interrupt</span>
             </button>
           ) : phase === "LISTENING" ? (
-            <div className="flex items-center justify-center gap-2 py-3 rounded-lg bg-blue-500/20 border border-blue-400/30">
-              <div className="flex items-end gap-0.5 h-4">
+            <div
+              className="flex items-center justify-center gap-3 py-3.5 rounded-xl"
+              style={{
+                background: "linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(59, 130, 246, 0.08) 100%)",
+                border: "1px solid rgba(59, 130, 246, 0.2)",
+              }}
+            >
+              <div className="flex items-end gap-1 h-5">
                 {[...Array(4)].map((_, i) => (
                   <div
                     key={i}
@@ -272,16 +332,16 @@ const AgnesDemoOverlay = memo(function AgnesDemoOverlay({
                   />
                 ))}
               </div>
-              <span className="text-blue-300 text-sm">Listening...</span>
+              <span className="text-blue-300 text-sm font-medium">Listening...</span>
             </div>
           ) : phase === "THINKING" ? (
-            <div className="flex items-center justify-center gap-2 py-3 text-white/50">
+            <div className="flex items-center justify-center gap-3 py-3.5 text-white/40">
               <div className="w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
-              <span className="text-sm">Processing...</span>
+              <span className="text-sm font-medium">Processing...</span>
             </div>
           ) : null}
 
-          <p className="text-center text-white/30 text-xs mt-2">
+          <p className="text-center text-white/25 text-xs mt-3">
             Press Esc to close
           </p>
         </div>

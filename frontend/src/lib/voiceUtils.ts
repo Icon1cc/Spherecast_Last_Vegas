@@ -16,22 +16,27 @@ export const VOICE_CONFIG = {
   ttsModelId: import.meta.env.VITE_ELEVENLABS_TTS_MODEL_ID?.trim() || "eleven_multilingual_v2",
   sttModelId: import.meta.env.VITE_ELEVENLABS_STT_MODEL_ID?.trim() || "scribe_v1",
 
-  // Voice detection thresholds (tuned for reliable speech detection)
-  baseSilenceThreshold: 0.02,
-  minDynamicSilenceThreshold: 0.01,
-  maxDynamicSilenceThreshold: 0.06,
-  silenceThresholdMultiplier: 2.0,
+  // Voice detection thresholds (tuned for reliable speech detection with noise filtering)
+  // IMPROVED: Higher thresholds to filter ambient noise (chairs, background sounds)
+  baseSilenceThreshold: 0.035,        // Increased from 0.02 to filter more noise
+  minDynamicSilenceThreshold: 0.025,  // Increased from 0.01 for better noise rejection
+  maxDynamicSilenceThreshold: 0.10,   // Increased from 0.06 for noisy environments
+  silenceThresholdMultiplier: 2.5,    // Increased from 2.0 for stronger adaptation
 
   // Timing constants (milliseconds) - optimized for faster response
-  noiseCalibrationMs: 300,
-  silenceDurationMs: 800,      // Reduced from 1200 - faster end-of-speech detection
-  noSpeechTimeoutMs: 8000,     // Reduced from 12000
-  maxRecordingMs: 20000,       // Reduced from 30000
-  minRecordingMs: 500,         // Reduced from 1000
+  noiseCalibrationMs: 500,    // Increased from 300 - better ambient noise sampling
+  silenceDurationMs: 800,     // Reduced from 1200 - faster end-of-speech detection
+  noSpeechTimeoutMs: 8000,    // Reduced from 12000
+  maxRecordingMs: 20000,      // Reduced from 30000
+  minRecordingMs: 500,        // Reduced from 1000
+
+  // Noise filtering - consecutive frames required to confirm speech
+  minSpeechFrames: 3,         // NEW: Require 3 consecutive frames above threshold
+  noiseFloorDecay: 0.98,      // NEW: Slowly decay noise floor estimate
 
   // TTS chunking
-  ttsChunkMaxChars: 150,       // Smaller chunks for faster playback start
-  minAudioBytesForStt: 1024,   // Reduced threshold
+  ttsChunkMaxChars: 150,      // Smaller chunks for faster playback start
+  minAudioBytesForStt: 1024,  // Reduced threshold
 } as const;
 
 // Supported MIME types for MediaRecorder (in preference order)
