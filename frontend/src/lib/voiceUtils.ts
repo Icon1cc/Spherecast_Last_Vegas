@@ -17,25 +17,25 @@ export const VOICE_CONFIG = {
   sttModelId: import.meta.env.VITE_ELEVENLABS_STT_MODEL_ID?.trim() || "scribe_v1",
 
   // Voice detection thresholds - HIGHER to filter background noise
-  baseSilenceThreshold: 0.06,        // INCREASED from 0.035 - ignore more background noise
-  minDynamicSilenceThreshold: 0.045, // INCREASED from 0.025 - minimum threshold for quiet rooms
-  maxDynamicSilenceThreshold: 0.15,  // INCREASED from 0.10 - maximum for noisy environments
-  silenceThresholdMultiplier: 3.0,   // INCREASED from 2.5 - more aggressive noise rejection
+  baseSilenceThreshold: 0.06,        // Ignore background noise
+  minDynamicSilenceThreshold: 0.045, // Minimum threshold for quiet rooms
+  maxDynamicSilenceThreshold: 0.15,  // Maximum for noisy environments
+  silenceThresholdMultiplier: 3.0,   // Aggressive noise rejection
 
-  // Timing constants (milliseconds) - ALLOW PAUSES FOR BREATHING
-  noiseCalibrationMs: 800,    // INCREASED from 500 - longer calibration for better noise baseline
-  silenceDurationMs: 1800,    // Allow 1.8 seconds of silence before ending
-  noSpeechTimeoutMs: 12000,   // Wait 12 seconds if no speech at all
-  maxRecordingMs: 30000,      // Allow longer recordings
-  minRecordingMs: 1500,       // INCREASED from 1200 - minimum 1.5 seconds before checking silence
+  // Timing constants (milliseconds) - ALLOW LONG PAUSES
+  noiseCalibrationMs: 800,    // Calibration for noise baseline
+  silenceDurationMs: 3000,    // INCREASED from 1800 - allow 3 SECONDS of silence before ending
+  noSpeechTimeoutMs: 15000,   // INCREASED from 12000 - wait 15 seconds if no speech at all
+  maxRecordingMs: 45000,      // INCREASED from 30000 - allow 45 second recordings
+  minRecordingMs: 2000,       // INCREASED from 1500 - minimum 2 seconds before checking silence
 
   // Noise filtering - consecutive frames required to confirm speech
-  minSpeechFrames: 5,         // INCREASED from 3 - require 5 consecutive frames above threshold
-  noiseFloorDecay: 0.995,     // INCREASED from 0.98 - slower decay for stable noise floor
+  minSpeechFrames: 5,         // Require 5 consecutive frames above threshold
+  noiseFloorDecay: 0.995,     // Slow decay for stable noise floor
 
   // Audio validation
-  minAudioDurationMs: 600,    // INCREASED from 500 - minimum audio duration to be valid
-  minAudioBytesForStt: 3000,  // INCREASED from 2048 - ensure enough data for valid audio
+  minAudioDurationMs: 600,    // Minimum audio duration to be valid
+  minAudioBytesForStt: 3000,  // Ensure enough data for valid audio
 
   // TTS chunking
   ttsChunkMaxChars: 250,      // Allow longer sentences for better flow
