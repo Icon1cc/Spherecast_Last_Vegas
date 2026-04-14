@@ -9,6 +9,7 @@ import type { ParsedIntent, NavigationTarget } from "@/types/demo";
  * Navigation trigger keywords - user must say one of these to allow navigation
  */
 const NAVIGATION_KEYWORDS = [
+  // Direct navigation requests
   "show me",
   "show",
   "open",
@@ -20,6 +21,20 @@ const NAVIGATION_KEYWORDS = [
   "let me see",
   "bring up",
   "pull up",
+  // Analysis requests (imply navigation to analysis page)
+  "do an analysis",
+  "do analysis",
+  "run an analysis",
+  "run analysis",
+  "analyze",
+  "analysis for",
+  "supplier analysis",
+  "supply analysis",
+  // View/see requests
+  "view the",
+  "view this",
+  "see the",
+  "look at",
 ];
 
 /**
