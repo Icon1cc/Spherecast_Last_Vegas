@@ -7,7 +7,7 @@
 import { memo, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { X, Mic, Volume2 } from "lucide-react";
-import AgnesVoiceOrb from "./AgnesVoiceOrb";
+import AgnesVoiceWave from "./AgnesVoiceWave";
 import { useAgnesDemo } from "@/hooks/useAgnesDemo";
 import type { DemoPhase } from "@/types/demo";
 
@@ -225,11 +225,11 @@ const AgnesDemoOverlay = memo(function AgnesDemoOverlay({
           </button>
         </div>
 
-        {/* Voice Orb and status */}
-        <div className="flex flex-col items-center py-8 border-b border-white/5">
-          <AgnesVoiceOrb phase={phase} size="md" />
+        {/* Voice Wave Visualization and status */}
+        <div className="flex flex-col items-center py-4 border-b border-white/5">
+          <AgnesVoiceWave phase={phase} size="md" />
 
-          <div className="flex items-center gap-2.5 mt-6">
+          <div className="flex items-center gap-2.5 mt-3">
             {phase === "LISTENING" && (
               <span className="relative flex h-2.5 w-2.5">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
