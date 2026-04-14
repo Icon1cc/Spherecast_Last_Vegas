@@ -30,7 +30,8 @@ export interface ParsedIntent {
   speech: string;
   navigation?: NavigationTarget;
   highlight?: string;
-  action?: "END_DEMO" | "SHOW_PRODUCTS" | "CONTINUE";
+  action?: "END_DEMO" | "SHOW_PRODUCTS" | "CONTINUE" | "ADJUST_SLIDER" | "SCROLL_DOWN" | "SCROLL_UP" | "UPDATE_ANALYSIS" | "SET_ALL_SLIDERS" | "MAXIMIZE_SLIDER" | "MINIMIZE_SLIDER";
+  actionParams?: Record<string, unknown>;
 }
 
 export interface DemoState {

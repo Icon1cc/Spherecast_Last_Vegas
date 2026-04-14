@@ -1,6 +1,6 @@
 /**
  * Intent Parser for Agnes Demo Mode
- * Extracts navigation commands and actions from AI responses
+ * Extracts navigation commands, page actions, and speech from AI responses
  */
 
 import type { ParsedIntent, NavigationTarget } from "@/types/demo";
@@ -13,12 +13,16 @@ import type { ParsedIntent, NavigationTarget } from "@/types/demo";
  * - [NAV:ANALYSIS:productId:materialId:productName:materialName]
  * - [HIGHLIGHT:selector]
  * - [ACTION:END_DEMO]
+ * - [ACTION:ADJUST_SLIDER:sliderName:value]
+ * - [ACTION:SCROLL_DOWN]
+ * - [ACTION:UPDATE_ANALYSIS]
  */
 export function parseIntent(response: string): ParsedIntent {
   let speech = response;
   let navigation: NavigationTarget | undefined;
   let highlight: string | undefined;
   let action: ParsedIntent["action"];
+  let actionParams: Record<string, unknown> | undefined;
 
   // Parse navigation commands
   const navDashboard = response.match(/\[NAV:DASHBOARD\]/i);
@@ -55,18 +59,54 @@ export function parseIntent(response: string): ParsedIntent {
     speech = speech.replace(highlightMatch[0], "");
   }
 
-  // Parse action command
-  const actionMatch = response.match(/\[ACTION:(\w+)\]/i);
-  if (actionMatch) {
-    const actionType = actionMatch[1].toUpperCase();
-    if (actionType === "END_DEMO") {
-      action = "END_DEMO";
-    } else if (actionType === "SHOW_PRODUCTS") {
-      action = "SHOW_PRODUCTS";
-    } else if (actionType === "CONTINUE") {
-      action = "CONTINUE";
-    }
-    speech = speech.replace(actionMatch[0], "");
+  // Parse action commands
+  // [ACTION:ADJUST_SLIDER:price:10]
+  const sliderMatch = response.match(/\[ACTION:ADJUST_SLIDER:(\w+):(\d+)\]/i);
+  if (sliderMatch) {
+    action = "ADJUST_SLIDER";
+    actionParams = {
+      slider: sliderMatch[1],
+      value: parseInt(sliderMatch[2], 10),
+    };
+    speech = speech.replace(sliderMatch[0], "");
+  }
+
+  // [ACTION:SET_SLIDERS:price=10,regulatory=8,certFit=9]
+  const multiSliderMatch = response.match(/\[ACTION:SET_SLIDERS:([^\]]+)\]/i);
+  if (multiSliderMatch) {
+    action = "SET_ALL_SLIDERS";
+    const slidersStr = multiSliderMatch[1];
+    const sliders: Record<string, number> = {};
+    slidersStr.split(",").forEach(pair => {
+      const [name, val] = pair.split("=");
+      if (name && val) {
+        sliders[name.trim()] = parseInt(val.trim(), 10);
+      }
+    });
+    actionParams = { sliders };
+    speech = speech.replace(multiSliderMatch[0], "");
+  }
+
+  // [ACTION:MAXIMIZE:price] or [ACTION:MINIMIZE:price]
+  const maxMinMatch = response.match(/\[ACTION:(MAXIMIZE|MINIMIZE):(\w+)\]/i);
+  if (maxMinMatch) {
+    action = maxMinMatch[1].toUpperCase() === "MAXIMIZE" ? "MAXIMIZE_SLIDER" : "MINIMIZE_SLIDER";
+    actionParams = { slider: maxMinMatch[2] };
+    speech = speech.replace(maxMinMatch[0], "");
+  }
+
+  // Simple actions
+  const simpleActionMatch = response.match(/\[ACTION:(SCROLL_DOWN|SCROLL_UP|SCROLL_TO_TOP|SCROLL_TO_BOTTOM|UPDATE_ANALYSIS)\]/i);
+  if (simpleActionMatch) {
+    action = simpleActionMatch[1].toUpperCase() as ParsedIntent["action"];
+    speech = speech.replace(simpleActionMatch[0], "");
+  }
+
+  // [ACTION:END_DEMO]
+  const endMatch = response.match(/\[ACTION:END_DEMO\]/i);
+  if (endMatch) {
+    action = "END_DEMO";
+    speech = speech.replace(endMatch[0], "");
   }
 
   // Clean up speech - remove extra whitespace and markdown
@@ -77,6 +117,7 @@ export function parseIntent(response: string): ParsedIntent {
     navigation,
     highlight,
     action,
+    actionParams,
   };
 }
 

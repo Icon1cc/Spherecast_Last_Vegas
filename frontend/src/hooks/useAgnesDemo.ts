@@ -349,34 +349,147 @@ export function useAgnesDemo(options: UseAgnesDemoOptions = {}): UseAgnesDemoRet
 
     // Wait for navigation to settle
     await new Promise(resolve => setTimeout(resolve, 400));
-    dispatch({ type: "NAVIGATION_COMPLETE" });
   }, [navigate, options]);
 
   /**
+   * Execute page actions (adjust sliders, scroll, click buttons)
+   */
+  const executePageAction = useCallback(async (action: string, params?: Record<string, unknown>) => {
+    console.log("[Agnes] Executing page action:", action, params);
+
+    switch (action) {
+      case "ADJUST_SLIDER": {
+        // Adjust a slider on the analysis page
+        const sliderName = params?.slider as string;
+        const value = params?.value as number;
+        if (!sliderName || value === undefined) return;
+
+        // Map slider names to their IDs
+        const sliderMap: Record<string, string> = {
+          "price": "slider-price",
+          "regulatory": "slider-regulatory",
+          "certfit": "slider-certFit",
+          "certification": "slider-certFit",
+          "supplyrisk": "slider-supplyRisk",
+          "supply": "slider-supplyRisk",
+          "functionalfit": "slider-functionalFit",
+          "functional": "slider-functionalFit",
+        };
+
+        const sliderId = sliderMap[sliderName.toLowerCase().replace(/\s+/g, "")];
+        if (sliderId) {
+          const slider = document.getElementById(sliderId) as HTMLInputElement;
+          if (slider) {
+            slider.value = String(value);
+            slider.dispatchEvent(new Event("input", { bubbles: true }));
+            slider.dispatchEvent(new Event("change", { bubbles: true }));
+            console.log("[Agnes] Adjusted slider:", sliderId, "to", value);
+          }
+        }
+        break;
+      }
+
+      case "SCROLL_DOWN": {
+        window.scrollBy({ top: 400, behavior: "smooth" });
+        break;
+      }
+
+      case "SCROLL_UP": {
+        window.scrollBy({ top: -400, behavior: "smooth" });
+        break;
+      }
+
+      case "SCROLL_TO_TOP": {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        break;
+      }
+
+      case "SCROLL_TO_BOTTOM": {
+        window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+        break;
+      }
+
+      case "UPDATE_ANALYSIS": {
+        // Click the "Update Analysis" button
+        const updateBtn = document.querySelector('button:contains("Update Analysis")') ||
+                         Array.from(document.querySelectorAll("button")).find(
+                           btn => btn.textContent?.toLowerCase().includes("update analysis")
+                         );
+        if (updateBtn) {
+          (updateBtn as HTMLButtonElement).click();
+          console.log("[Agnes] Clicked Update Analysis button");
+        }
+        break;
+      }
+
+      case "SET_ALL_SLIDERS": {
+        // Set multiple sliders at once
+        const sliders = params?.sliders as Record<string, number>;
+        if (!sliders) return;
+
+        for (const [name, value] of Object.entries(sliders)) {
+          await executePageAction("ADJUST_SLIDER", { slider: name, value });
+          await new Promise(r => setTimeout(r, 100));
+        }
+        break;
+      }
+
+      case "MAXIMIZE_SLIDER": {
+        const sliderName = params?.slider as string;
+        if (sliderName) {
+          await executePageAction("ADJUST_SLIDER", { slider: sliderName, value: 10 });
+        }
+        break;
+      }
+
+      case "MINIMIZE_SLIDER": {
+        const sliderName = params?.slider as string;
+        if (sliderName) {
+          await executePageAction("ADJUST_SLIDER", { slider: sliderName, value: 1 });
+        }
+        break;
+      }
+    }
+
+    // Small delay after action
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }, []);
+
+  /**
    * Process AI response and handle actions
+   * IMPORTANT: Navigate FIRST, then speak (so user sees page while Agnes explains)
    */
   const processAIResponse = useCallback(async (response: string) => {
     const intent = parseIntent(response);
 
-    // Dispatch the response
-    dispatch({ type: "AI_RESPONSE", payload: intent });
-
     // Check if demo should end
     if (shouldEndDemo(intent)) {
+      dispatch({ type: "AI_RESPONSE", payload: intent });
       await voiceIO.speak(intent.speech);
       dispatch({ type: "CLOSE_DEMO" });
       options.onComplete?.();
       return;
     }
 
-    // Speak the response first
-    await voiceIO.speak(intent.speech);
-
-    // Handle navigation after speech (if any)
+    // NAVIGATE FIRST (before speaking) so user sees the page while Agnes explains
     if (hasNavigation(intent) && intent.navigation) {
-      pendingNavigationRef.current = intent.navigation;
+      console.log("[Agnes] Navigating FIRST:", intent.navigation);
+      await executeNavigation(intent.navigation);
+      // Small delay for page to render
+      await new Promise(resolve => setTimeout(resolve, 300));
     }
-  }, [voiceIO, options]);
+
+    // Execute any page actions (sliders, scroll, etc.)
+    if (intent.action && intent.action !== "END_DEMO") {
+      await executePageAction(intent.action, intent.actionParams);
+    }
+
+    // Dispatch the response (updates transcript)
+    dispatch({ type: "AI_RESPONSE", payload: intent });
+
+    // NOW speak the response (user is already seeing the page)
+    await voiceIO.speak(intent.speech);
+  }, [voiceIO, options, executeNavigation]);
 
   // Effect: Handle GREETING phase
   useEffect(() => {
