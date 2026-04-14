@@ -6,60 +6,94 @@
 import type { ParsedIntent, NavigationTarget } from "@/types/demo";
 
 /**
- * Navigation trigger keywords - user must say one of these to allow navigation
+ * Keywords that BLOCK navigation - user is just asking for information
+ * If user says these WITHOUT action words, don't navigate
+ */
+const INFORMATION_ONLY_PATTERNS = [
+  /^what is/i,
+  /^what are/i,
+  /^tell me about(?! on screen| the screen)/i,  // "tell me about" but NOT "tell me about on screen"
+  /^describe/i,
+  /^explain/i,
+  /^who is/i,
+  /^why is/i,
+  /^how does/i,
+];
+
+/**
+ * Keywords that ALLOW navigation - user wants to see something on screen
  */
 const NAVIGATION_KEYWORDS = [
-  // Direct navigation requests
+  // Direct show/display requests
   "show me",
   "show",
+  "on screen",
+  "on the screen",
+  "display",
   "open",
   "navigate",
   "go to",
-  "display",
-  "take me to",
-  "let's go",
-  "let me see",
-  "bring up",
+  "take me",
   "pull up",
-  // Analysis requests (imply navigation to analysis page)
-  "do an analysis",
-  "do analysis",
-  "run an analysis",
-  "run analysis",
-  "analyze",
-  "analysis for",
-  "supplier analysis",
-  "supply analysis",
-  // View/see requests
-  "view the",
-  "view this",
+  "bring up",
+  // Give/get requests that imply showing
+  "give me the list",
+  "give me a list",
+  "get me the list",
+  "list of",
+  "list the",
+  // See/view requests
   "see the",
+  "see it",
+  "view the",
+  "view it",
   "look at",
-  // Conversational confirmations (when Agnes offers to show something)
+  "let me see",
+  "i want to see",
+  "i would like to see",
+  "i'd like to see",
+  // Analysis requests
+  "analysis",
+  "analyze",
+  "supplier",
+  "suppliers",
+  // Confirmations (when Agnes asks "would you like me to show...")
   "yes",
   "yeah",
+  "yep",
   "sure",
   "ok",
   "okay",
   "please",
-  "i would like",
-  "i want to",
-  "i'd like",
-  "let's see",
   "go ahead",
   "do it",
-  "see it",
-  "show it",
 ];
+
+/**
+ * Check if user's message is asking for information only (no navigation)
+ */
+function isInformationOnlyRequest(userMessage: string): boolean {
+  const lower = userMessage.toLowerCase().trim();
+  return INFORMATION_ONLY_PATTERNS.some(pattern => pattern.test(lower));
+}
 
 /**
  * Check if user's message contains navigation intent
  */
 export function userRequestedNavigation(userMessage: string): boolean {
   const lower = userMessage.toLowerCase();
+
+  // If it matches information-only pattern AND doesn't have explicit screen/show words, block navigation
+  if (isInformationOnlyRequest(lower)) {
+    const hasExplicitShowWord = ["show", "screen", "display", "open", "view", "see"].some(w => lower.includes(w));
+    if (!hasExplicitShowWord) {
+      console.log("[IntentParser] Information-only request detected, blocking navigation");
+      return false;
+    }
+  }
+
   const hasKeyword = NAVIGATION_KEYWORDS.some(keyword => lower.includes(keyword));
-  console.log("[IntentParser] Checking navigation intent:", {
-    userMessage: lower.substring(0, 50),
+  console.log("[IntentParser] Navigation check:", {
     hasKeyword,
     matchedKeyword: NAVIGATION_KEYWORDS.find(k => lower.includes(k))
   });
