@@ -84,7 +84,8 @@ function demoReducer(state: DemoState, action: DemoAction): DemoState {
         phase: "SPEAKING",
         currentSpeech: action.payload.speech,
         transcript: [...state.transcript, newTranscript],
-        navigationTarget: action.payload.navigation ?? null,
+        // IMPORTANT: Always clear navigationTarget - navigation is done BEFORE this dispatch
+        navigationTarget: null,
         conversationHistory: [
           ...state.conversationHistory,
           { role: "assistant", content: action.payload.speech },
@@ -100,18 +101,12 @@ function demoReducer(state: DemoState, action: DemoAction): DemoState {
       };
 
     case "SPEECH_COMPLETE":
-      // If there's a pending navigation, go to NAVIGATING
-      if (state.navigationTarget) {
-        return {
-          ...state,
-          phase: "NAVIGATING",
-        };
-      }
-      // Otherwise go back to listening
+      // Navigation is now done BEFORE speaking, so always go to LISTENING
       return {
         ...state,
         phase: "LISTENING",
         currentSpeech: "",
+        navigationTarget: null,
       };
 
     case "NAVIGATE":
@@ -458,9 +453,12 @@ export function useAgnesDemo(options: UseAgnesDemoOptions = {}): UseAgnesDemoRet
   /**
    * Process AI response and handle actions
    * IMPORTANT: Navigate FIRST, then speak (so user sees page while Agnes explains)
+   * @param response - AI response text
+   * @param userMessage - The user's original message (used to validate navigation)
    */
-  const processAIResponse = useCallback(async (response: string) => {
-    const intent = parseIntent(response);
+  const processAIResponse = useCallback(async (response: string, userMessage: string) => {
+    // Pass userMessage to parseIntent - it will strip navigation if user didn't request it
+    const intent = parseIntent(response, userMessage);
 
     // Check if demo should end
     if (shouldEndDemo(intent)) {
@@ -484,12 +482,15 @@ export function useAgnesDemo(options: UseAgnesDemoOptions = {}): UseAgnesDemoRet
       await executePageAction(intent.action, intent.actionParams);
     }
 
-    // Dispatch the response (updates transcript)
-    dispatch({ type: "AI_RESPONSE", payload: intent });
+    // Clear navigation from intent BEFORE dispatching - we already navigated
+    const intentWithoutNav = { ...intent, navigation: undefined };
+
+    // Dispatch the response (updates transcript) - navigation is cleared so we go to LISTENING after speech
+    dispatch({ type: "AI_RESPONSE", payload: intentWithoutNav });
 
     // NOW speak the response (user is already seeing the page)
     await voiceIO.speak(intent.speech);
-  }, [voiceIO, options, executeNavigation]);
+  }, [voiceIO, options, executeNavigation, executePageAction]);
 
   // Effect: Handle GREETING phase
   useEffect(() => {
@@ -540,7 +541,8 @@ export function useAgnesDemo(options: UseAgnesDemoOptions = {}): UseAgnesDemoRet
       try {
         const response = await sendToAI(lastUserMessage.text, state.conversationHistory.slice(0, -1));
         console.log("[Agnes] AI response received:", response.substring(0, 100));
-        await processAIResponse(response);
+        // Pass user's original message to validate navigation intent
+        await processAIResponse(response, lastUserMessage.text);
       } catch (error) {
         console.error("[Agnes] AI processing error:", error);
         dispatch({ type: "ERROR", payload: "I encountered an issue. Let me try again." });
@@ -554,21 +556,18 @@ export function useAgnesDemo(options: UseAgnesDemoOptions = {}): UseAgnesDemoRet
     void process();
   }, [state.phase, state.transcript, state.conversationHistory, sendToAI, processAIResponse, voiceIO]);
 
-  // Effect: Handle NAVIGATING phase
-  useEffect(() => {
-    if (state.phase !== "NAVIGATING" || !state.navigationTarget) return;
-    console.log("[Agnes] NAVIGATING phase - target:", state.navigationTarget);
-    void executeNavigation(state.navigationTarget);
-  }, [state.phase, state.navigationTarget, executeNavigation]);
+  // Note: Navigation is now handled inline in processAIResponse (navigate FIRST, then speak)
+  // The NAVIGATING phase and related effects are no longer used
 
-  // Effect: Handle pending navigation after speech complete
+  // Effect: Handle pending navigation after speech complete (legacy, kept for safety)
   useEffect(() => {
     if (state.phase === "LISTENING" && pendingNavigationRef.current) {
       const nav = pendingNavigationRef.current;
       pendingNavigationRef.current = null;
-      dispatch({ type: "NAVIGATE", payload: nav });
+      // Execute navigation directly instead of going through NAVIGATING phase
+      void executeNavigation(nav);
     }
-  }, [state.phase]);
+  }, [state.phase, executeNavigation]);
 
   /**
    * Start the demo

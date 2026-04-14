@@ -6,6 +6,31 @@
 import type { ParsedIntent, NavigationTarget } from "@/types/demo";
 
 /**
+ * Navigation trigger keywords - user must say one of these to allow navigation
+ */
+const NAVIGATION_KEYWORDS = [
+  "show me",
+  "show",
+  "open",
+  "navigate",
+  "go to",
+  "display",
+  "take me to",
+  "let's go",
+  "let me see",
+  "bring up",
+  "pull up",
+];
+
+/**
+ * Check if user's message contains navigation intent
+ */
+export function userRequestedNavigation(userMessage: string): boolean {
+  const lower = userMessage.toLowerCase();
+  return NAVIGATION_KEYWORDS.some(keyword => lower.includes(keyword));
+}
+
+/**
  * Parse navigation command from AI response
  * Formats:
  * - [NAV:DASHBOARD]
@@ -16,18 +41,38 @@ import type { ParsedIntent, NavigationTarget } from "@/types/demo";
  * - [ACTION:ADJUST_SLIDER:sliderName:value]
  * - [ACTION:SCROLL_DOWN]
  * - [ACTION:UPDATE_ANALYSIS]
+ *
+ * @param response - AI response text
+ * @param userMessage - Optional: user's original message. If provided, navigation
+ *                      commands will be STRIPPED unless user explicitly requested navigation
  */
-export function parseIntent(response: string): ParsedIntent {
-  let speech = response;
+export function parseIntent(response: string, userMessage?: string): ParsedIntent {
+  // SAFEGUARD: If we have the user's message, check if they actually requested navigation
+  // If not, strip any [NAV:...] commands from the response before parsing
+  let sanitizedResponse = response;
+
+  if (userMessage && !userRequestedNavigation(userMessage)) {
+    // User did NOT request navigation - strip all NAV commands
+    sanitizedResponse = response
+      .replace(/\[NAV:DASHBOARD\]/gi, "")
+      .replace(/\[NAV:PRODUCT:\d+:[^\]]+\]/gi, "")
+      .replace(/\[NAV:ANALYSIS:\d+:\d+:[^:]+:[^\]]+\]/gi, "");
+
+    if (sanitizedResponse !== response) {
+      console.log("[IntentParser] Stripped unauthorized navigation from AI response");
+      console.log("[IntentParser] User said:", userMessage);
+    }
+  }
+  let speech = sanitizedResponse;
   let navigation: NavigationTarget | undefined;
   let highlight: string | undefined;
   let action: ParsedIntent["action"];
   let actionParams: Record<string, unknown> | undefined;
 
-  // Parse navigation commands
-  const navDashboard = response.match(/\[NAV:DASHBOARD\]/i);
-  const navProduct = response.match(/\[NAV:PRODUCT:(\d+):([^\]]+)\]/i);
-  const navAnalysis = response.match(
+  // Parse navigation commands (from sanitized response)
+  const navDashboard = sanitizedResponse.match(/\[NAV:DASHBOARD\]/i);
+  const navProduct = sanitizedResponse.match(/\[NAV:PRODUCT:(\d+):([^\]]+)\]/i);
+  const navAnalysis = sanitizedResponse.match(
     /\[NAV:ANALYSIS:(\d+):(\d+):([^:]+):([^\]]+)\]/i
   );
 
@@ -53,7 +98,7 @@ export function parseIntent(response: string): ParsedIntent {
   }
 
   // Parse highlight command
-  const highlightMatch = response.match(/\[HIGHLIGHT:([^\]]+)\]/i);
+  const highlightMatch = sanitizedResponse.match(/\[HIGHLIGHT:([^\]]+)\]/i);
   if (highlightMatch) {
     highlight = highlightMatch[1].trim();
     speech = speech.replace(highlightMatch[0], "");
@@ -61,7 +106,7 @@ export function parseIntent(response: string): ParsedIntent {
 
   // Parse action commands
   // [ACTION:ADJUST_SLIDER:price:10]
-  const sliderMatch = response.match(/\[ACTION:ADJUST_SLIDER:(\w+):(\d+)\]/i);
+  const sliderMatch = sanitizedResponse.match(/\[ACTION:ADJUST_SLIDER:(\w+):(\d+)\]/i);
   if (sliderMatch) {
     action = "ADJUST_SLIDER";
     actionParams = {
@@ -72,7 +117,7 @@ export function parseIntent(response: string): ParsedIntent {
   }
 
   // [ACTION:SET_SLIDERS:price=10,regulatory=8,certFit=9]
-  const multiSliderMatch = response.match(/\[ACTION:SET_SLIDERS:([^\]]+)\]/i);
+  const multiSliderMatch = sanitizedResponse.match(/\[ACTION:SET_SLIDERS:([^\]]+)\]/i);
   if (multiSliderMatch) {
     action = "SET_ALL_SLIDERS";
     const slidersStr = multiSliderMatch[1];
@@ -88,7 +133,7 @@ export function parseIntent(response: string): ParsedIntent {
   }
 
   // [ACTION:MAXIMIZE:price] or [ACTION:MINIMIZE:price]
-  const maxMinMatch = response.match(/\[ACTION:(MAXIMIZE|MINIMIZE):(\w+)\]/i);
+  const maxMinMatch = sanitizedResponse.match(/\[ACTION:(MAXIMIZE|MINIMIZE):(\w+)\]/i);
   if (maxMinMatch) {
     action = maxMinMatch[1].toUpperCase() === "MAXIMIZE" ? "MAXIMIZE_SLIDER" : "MINIMIZE_SLIDER";
     actionParams = { slider: maxMinMatch[2] };
@@ -96,14 +141,14 @@ export function parseIntent(response: string): ParsedIntent {
   }
 
   // Simple actions
-  const simpleActionMatch = response.match(/\[ACTION:(SCROLL_DOWN|SCROLL_UP|SCROLL_TO_TOP|SCROLL_TO_BOTTOM|UPDATE_ANALYSIS)\]/i);
+  const simpleActionMatch = sanitizedResponse.match(/\[ACTION:(SCROLL_DOWN|SCROLL_UP|SCROLL_TO_TOP|SCROLL_TO_BOTTOM|UPDATE_ANALYSIS)\]/i);
   if (simpleActionMatch) {
     action = simpleActionMatch[1].toUpperCase() as ParsedIntent["action"];
     speech = speech.replace(simpleActionMatch[0], "");
   }
 
   // [ACTION:END_DEMO]
-  const endMatch = response.match(/\[ACTION:END_DEMO\]/i);
+  const endMatch = sanitizedResponse.match(/\[ACTION:END_DEMO\]/i);
   if (endMatch) {
     action = "END_DEMO";
     speech = speech.replace(endMatch[0], "");
