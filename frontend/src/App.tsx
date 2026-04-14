@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { AgnesProvider } from "@/contexts/AgnesContext";
 import Dashboard from "./pages/Index";
 import AnalysisPage from "./pages/AnalysisPage";
 import AboutPage from "./pages/About";
@@ -25,16 +26,19 @@ const App = () => (
     <TooltipProvider>
       <Toaster position="top-right" richColors />
       <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/analysis/:productId/:materialId" element={<AnalysisPage />} />
-          <Route path="/about" element={<AboutPage />} />
-          <Route path="/contact" element={<ContactPage />} />
-          <Route path="/profile" element={<ProfilePage />} />
-          <Route path="/privacy" element={<PrivacyPage />} />
-          <Route path="/terms" element={<TermsPage />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        {/* AgnesProvider wraps routes - Agnes persists across navigation */}
+        <AgnesProvider>
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/analysis/:productId/:materialId" element={<AnalysisPage />} />
+            <Route path="/about" element={<AboutPage />} />
+            <Route path="/contact" element={<ContactPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/privacy" element={<PrivacyPage />} />
+            <Route path="/terms" element={<TermsPage />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </AgnesProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

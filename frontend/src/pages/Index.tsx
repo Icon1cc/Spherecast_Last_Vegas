@@ -6,7 +6,7 @@ import Layout from "@/components/Layout";
 import ChatIcon from "@/components/ChatIcon";
 import ChatPanel from "@/components/ChatPanel";
 import RawMaterialsModal from "@/components/RawMaterialsModal";
-import AgnesDemoOverlay from "@/components/demo/AgnesDemoOverlay";
+import { useAgnes } from "@/contexts/AgnesContext";
 import { getProducts, getProductBom, type Product, type BomComponent } from "@/lib/api";
 
 const ITEMS_PER_PAGE = 10;
@@ -16,8 +16,8 @@ const Dashboard = () => {
   const [page, setPage] = useState(1);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
-  const [demoOpen, setDemoOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
+  const { isOpen: demoOpen, openAgnes: handleOpenDemo } = useAgnes();
 
   // Fetch products from API
   const {
@@ -81,14 +81,6 @@ const Dashboard = () => {
 
   const handleCloseChat = useCallback(() => {
     setChatOpen(false);
-  }, []);
-
-  const handleOpenDemo = useCallback(() => {
-    setDemoOpen(true);
-  }, []);
-
-  const handleCloseDemo = useCallback(() => {
-    setDemoOpen(false);
   }, []);
 
   const isModalOpen = selectedProduct !== null;
@@ -261,8 +253,7 @@ const Dashboard = () => {
       <ChatIcon onClick={handleOpenChat} visible={showChatIcon} />
       <ChatPanel open={chatOpen} onClose={handleCloseChat} />
 
-      {/* Agnes Demo Overlay */}
-      <AgnesDemoOverlay isOpen={demoOpen} onClose={handleCloseDemo} />
+      {/* Agnes is now managed globally via AgnesProvider in App.tsx */}
     </Layout>
   );
 };
