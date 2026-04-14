@@ -414,8 +414,11 @@ export function useVoiceIO(options: UseVoiceIOOptions = {}): UseVoiceIOReturn {
         setIsListening(false);
         options.onListeningEnd?.();
 
-        if (audioChunksRef.current.length === 0) {
-          options.onError?.(new Error("No audio recorded"), "stt");
+        // Need at least 2 chunks for valid audio (avoid corrupted files)
+        if (audioChunksRef.current.length < 2) {
+          console.warn("[VoiceIO] Not enough audio chunks:", audioChunksRef.current.length);
+          options.onError?.(new Error("Recording too short. Please speak a bit longer."), "stt");
+          audioChunksRef.current = [];
           return;
         }
 
@@ -425,9 +428,11 @@ export function useVoiceIO(options: UseVoiceIOOptions = {}): UseVoiceIOReturn {
             type: audioChunksRef.current[0]?.type || recordingMimeTypeRef.current || "audio/webm",
           });
 
-          // Always send to ElevenLabs - let the server decide if there's speech
-          // Don't rely on local speech detection which can be unreliable
+          console.log("[VoiceIO] Audio blob size:", audioBlob.size, "chunks:", audioChunksRef.current.length);
+
+          // Validate minimum audio size to prevent corrupted file errors
           if (audioBlob.size < MIN_AUDIO_BYTES_FOR_STT) {
+            console.warn("[VoiceIO] Audio too small:", audioBlob.size, "< minimum:", MIN_AUDIO_BYTES_FOR_STT);
             options.onError?.(new Error("Recording too short. Please speak a bit longer."), "stt");
             return;
           }
@@ -466,7 +471,8 @@ export function useVoiceIO(options: UseVoiceIOOptions = {}): UseVoiceIOReturn {
 
       activeRecorder.ondataavailable = handleDataAvailable;
       activeRecorder.onstop = handleStop;
-      activeRecorder.start(250);
+      // Collect data every 500ms (was 250ms) - longer intervals = more stable chunks
+      activeRecorder.start(500);
       setIsListening(true);
       options.onListeningStart?.();
     } catch (error) {

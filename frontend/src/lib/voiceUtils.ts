@@ -17,26 +17,28 @@ export const VOICE_CONFIG = {
   sttModelId: import.meta.env.VITE_ELEVENLABS_STT_MODEL_ID?.trim() || "scribe_v1",
 
   // Voice detection thresholds (tuned for reliable speech detection with noise filtering)
-  // IMPROVED: Higher thresholds to filter ambient noise (chairs, background sounds)
-  baseSilenceThreshold: 0.035,        // Increased from 0.02 to filter more noise
-  minDynamicSilenceThreshold: 0.025,  // Increased from 0.01 for better noise rejection
-  maxDynamicSilenceThreshold: 0.10,   // Increased from 0.06 for noisy environments
-  silenceThresholdMultiplier: 2.5,    // Increased from 2.0 for stronger adaptation
+  baseSilenceThreshold: 0.035,        // Filter ambient noise
+  minDynamicSilenceThreshold: 0.025,  // Minimum threshold for quiet rooms
+  maxDynamicSilenceThreshold: 0.10,   // Maximum for noisy environments
+  silenceThresholdMultiplier: 2.5,    // Multiplier for dynamic threshold
 
-  // Timing constants (milliseconds) - optimized for faster response
-  noiseCalibrationMs: 500,    // Increased from 300 - better ambient noise sampling
-  silenceDurationMs: 800,     // Reduced from 1200 - faster end-of-speech detection
-  noSpeechTimeoutMs: 8000,    // Reduced from 12000
-  maxRecordingMs: 20000,      // Reduced from 30000
-  minRecordingMs: 500,        // Reduced from 1000
+  // Timing constants (milliseconds) - ALLOW PAUSES FOR BREATHING
+  noiseCalibrationMs: 500,    // Calibration period for ambient noise
+  silenceDurationMs: 1800,    // INCREASED from 800 - allow 1.8 seconds of silence before ending
+  noSpeechTimeoutMs: 12000,   // INCREASED from 8000 - wait 12 seconds if no speech at all
+  maxRecordingMs: 30000,      // INCREASED from 20000 - allow longer recordings
+  minRecordingMs: 1200,       // INCREASED from 500 - minimum 1.2 seconds before checking silence
 
   // Noise filtering - consecutive frames required to confirm speech
-  minSpeechFrames: 3,         // NEW: Require 3 consecutive frames above threshold
-  noiseFloorDecay: 0.98,      // NEW: Slowly decay noise floor estimate
+  minSpeechFrames: 3,         // Require 3 consecutive frames above threshold
+  noiseFloorDecay: 0.98,      // Slowly decay noise floor estimate
+
+  // Audio validation
+  minAudioDurationMs: 500,    // NEW: Minimum audio duration to be valid
+  minAudioBytesForStt: 2048,  // INCREASED from 1024 - ensure enough data for valid audio
 
   // TTS chunking
   ttsChunkMaxChars: 150,      // Smaller chunks for faster playback start
-  minAudioBytesForStt: 1024,  // Reduced threshold
 } as const;
 
 // Supported MIME types for MediaRecorder (in preference order)
