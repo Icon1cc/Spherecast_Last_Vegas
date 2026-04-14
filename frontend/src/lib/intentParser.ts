@@ -57,7 +57,13 @@ const NAVIGATION_KEYWORDS = [
  */
 export function userRequestedNavigation(userMessage: string): boolean {
   const lower = userMessage.toLowerCase();
-  return NAVIGATION_KEYWORDS.some(keyword => lower.includes(keyword));
+  const hasKeyword = NAVIGATION_KEYWORDS.some(keyword => lower.includes(keyword));
+  console.log("[IntentParser] Checking navigation intent:", {
+    userMessage: lower.substring(0, 50),
+    hasKeyword,
+    matchedKeyword: NAVIGATION_KEYWORDS.find(k => lower.includes(k))
+  });
+  return hasKeyword;
 }
 
 /**

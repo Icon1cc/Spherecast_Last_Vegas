@@ -470,8 +470,20 @@ export function useAgnesDemo(options: UseAgnesDemoOptions = {}): UseAgnesDemoRet
    * @param userMessage - The user's original message (used to validate navigation)
    */
   const processAIResponse = useCallback(async (response: string, userMessage: string) => {
+    console.log("[Agnes] Processing AI response:", {
+      responsePreview: response.substring(0, 100),
+      hasNavCommand: response.includes("[NAV:"),
+      userMessage: userMessage.substring(0, 50),
+    });
+
     // Pass userMessage to parseIntent - it will strip navigation if user didn't request it
     const intent = parseIntent(response, userMessage);
+
+    console.log("[Agnes] Parsed intent:", {
+      hasNavigation: !!intent.navigation,
+      navigationType: intent.navigation?.type,
+      action: intent.action,
+    });
 
     // Check if demo should end
     if (shouldEndDemo(intent)) {
@@ -487,7 +499,9 @@ export function useAgnesDemo(options: UseAgnesDemoOptions = {}): UseAgnesDemoRet
       console.log("[Agnes] Navigating FIRST:", intent.navigation);
       await executeNavigation(intent.navigation);
       // Small delay for page to render
-      await new Promise(resolve => setTimeout(resolve, 300));
+      await new Promise(resolve => setTimeout(resolve, 500)); // Increased delay
+    } else {
+      console.log("[Agnes] No navigation in intent");
     }
 
     // Execute any page actions (sliders, scroll, etc.)
