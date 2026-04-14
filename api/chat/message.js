@@ -163,17 +163,48 @@ export default async function handler(req, res) {
     if (pageContext?.materialId) {
       const productLabel = pageContext.productName || `product ID ${pageContext.productId}`;
       const materialLabel = pageContext.materialName || `material ID ${pageContext.materialId}`;
+
+      let analysisInfo = "";
+
+      // Include actual analysis data if provided
+      if (pageContext.analysisData) {
+        const { recommendedSupplier, alternatives, supplierCount } = pageContext.analysisData;
+
+        if (recommendedSupplier) {
+          const scorePercent = recommendedSupplier.score ? Math.round(recommendedSupplier.score * 100) : "N/A";
+          const priceInfo = recommendedSupplier.price
+            ? `${recommendedSupplier.priceCurrency || '$'}${recommendedSupplier.price}/${recommendedSupplier.priceUnit || 'unit'}`
+            : "price not available";
+
+          analysisInfo = `
+
+ACTUAL SUPPLIER DATA ON THIS PAGE:
+- RECOMMENDED SUPPLIER: "${recommendedSupplier.name}" with ${scorePercent}% match score
+- Location: ${recommendedSupplier.country || "Unknown"}
+- Price: ${priceInfo}
+- Why recommended: ${recommendedSupplier.reasoning || "Best overall match based on current criteria"}
+
+ALTERNATIVE SUPPLIERS (${supplierCount} total):`;
+
+          if (alternatives && alternatives.length > 0) {
+            alternatives.forEach((alt, i) => {
+              const altScore = alt.score ? Math.round(alt.score * 100) : "N/A";
+              analysisInfo += `
+${i + 1}. "${alt.name}" - ${altScore}% match${alt.country ? `, ${alt.country}` : ""}`;
+            });
+          }
+
+          analysisInfo += `
+
+IMPORTANT: Use this ACTUAL data when answering questions about suppliers. The recommended supplier is "${recommendedSupplier.name}".`;
+        }
+      }
+
       contextPrompt += `\n\nCURRENT PAGE CONTEXT:
-The user is currently viewing the SUPPLIER ANALYSIS page for "${materialLabel}" (materialId=${pageContext.materialId}) in the product "${productLabel}" (productId=${pageContext.productId}).
+The user is currently viewing the SUPPLIER ANALYSIS page for "${materialLabel}" in the product "${productLabel}".
+${analysisInfo}
 
-This page shows:
-- Recommended supplier with match score
-- Alternative suppliers ranked by score
-- Quality metrics radar chart
-- Parameter adjustment sliders (price, regulatory, certifications, supply risk, functional fit)
-- Substitution candidates (same molecule and same function alternatives)
-
-When the user asks about this page, explain what they are seeing. When they ask about suppliers, use the data from the raw materials list to give accurate information.`;
+When user asks "who is the best supplier" or "tell me about suppliers", use the ACTUAL SUPPLIER DATA above to answer accurately.`;
     } else if (pageContext?.productId) {
       const productLabel = pageContext.productName || `product ID ${pageContext.productId}`;
       contextPrompt += `\n\nCURRENT PAGE CONTEXT:

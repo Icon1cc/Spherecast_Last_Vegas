@@ -3,10 +3,11 @@
  * Orchestrates voice I/O, AI conversation, and navigation
  */
 
-import { useReducer, useCallback, useRef, useEffect, useMemo } from "react";
+import { useReducer, useCallback, useRef, useEffect, useMemo, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useVoiceIO } from "./useVoiceIO";
 import { parseIntent, shouldEndDemo, hasNavigation } from "@/lib/intentParser";
+import { getComponentAnalysis, type AnalysisResponse, type AnalysisWeights } from "@/lib/api";
 import type { DemoState, DemoAction, DemoPhase, TranscriptEntry, NavigationTarget } from "@/types/demo";
 import type { PageContext } from "@/lib/api";
 
@@ -183,6 +184,9 @@ export function useAgnesDemo(options: UseAgnesDemoOptions = {}): UseAgnesDemoRet
   const noSpeechRetryCountRef = useRef(0);
   const MAX_NO_SPEECH_RETRIES = 3;
 
+  // State for analysis page data
+  const [analysisData, setAnalysisData] = useState<AnalysisResponse | null>(null);
+
   // Derive page context from current URL so Agnes knows what product/material is being viewed
   const pageContext = useMemo((): PageContext | null => {
     const match = location.pathname.match(/^\/analysis\/(\d+)\/(\d+)/);
@@ -202,6 +206,33 @@ export function useAgnesDemo(options: UseAgnesDemoOptions = {}): UseAgnesDemoRet
     }
     return null;
   }, [location.pathname, location.search]);
+
+  // Fetch analysis data when on analysis page
+  useEffect(() => {
+    if (pageContext?.materialId) {
+      const materialId = parseInt(pageContext.materialId, 10);
+      const defaultWeights: AnalysisWeights = {
+        price: 5,
+        regulatory: 5,
+        certFit: 5,
+        supplyRisk: 5,
+        functionalFit: 5,
+      };
+
+      console.log("[Agnes] Fetching analysis data for material:", materialId);
+      getComponentAnalysis(materialId, defaultWeights)
+        .then((data) => {
+          console.log("[Agnes] Analysis data loaded:", data.recommendedSupplier?.name);
+          setAnalysisData(data);
+        })
+        .catch((err) => {
+          console.error("[Agnes] Failed to fetch analysis data:", err);
+          setAnalysisData(null);
+        });
+    } else {
+      setAnalysisData(null);
+    }
+  }, [pageContext?.materialId]);
 
   // Voice I/O setup
   const voiceIO = useVoiceIO({
@@ -242,6 +273,31 @@ export function useAgnesDemo(options: UseAgnesDemoOptions = {}): UseAgnesDemoRet
    * Send message to AI and get response
    */
   const sendToAI = useCallback(async (message: string, history: Array<{ role: "user" | "assistant"; content: string }>) => {
+    // Build extended page context with analysis data if available
+    const extendedPageContext = pageContext ? {
+      ...pageContext,
+      // Include actual analysis data when on analysis page
+      analysisData: analysisData ? {
+        componentName: analysisData.component?.name,
+        recommendedSupplier: {
+          name: analysisData.recommendedSupplier?.name,
+          score: analysisData.recommendedSupplier?.score,
+          country: analysisData.recommendedSupplier?.country,
+          price: analysisData.recommendedSupplier?.price,
+          priceUnit: analysisData.recommendedSupplier?.priceUnit,
+          priceCurrency: analysisData.recommendedSupplier?.priceCurrency,
+          reasoning: analysisData.recommendedSupplier?.reasoning,
+        },
+        alternatives: analysisData.alternatives?.slice(0, 3).map(alt => ({
+          name: alt.name,
+          score: alt.score,
+          country: alt.country,
+          reasoning: alt.reasoning,
+        })),
+        supplierCount: analysisData.supplierCount,
+      } : undefined,
+    } : null;
+
     // Use the main chat endpoint with isDemo flag - this uses the demo system prompt
     const response = await fetch("/api/chat/message", {
       method: "POST",
@@ -250,7 +306,7 @@ export function useAgnesDemo(options: UseAgnesDemoOptions = {}): UseAgnesDemoRet
         message,
         history,
         isDemo: true,
-        pageContext: pageContext ?? null,
+        pageContext: extendedPageContext,
       }),
     });
 
@@ -260,7 +316,7 @@ export function useAgnesDemo(options: UseAgnesDemoOptions = {}): UseAgnesDemoRet
 
     const data = await response.json();
     return data.response as string;
-  }, [pageContext]);
+  }, [pageContext, analysisData]);
 
   /**
    * Execute navigation
