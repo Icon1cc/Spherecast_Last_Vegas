@@ -217,7 +217,12 @@ export function useAgnesDemo(options: UseAgnesDemoOptions = {}): UseAgnesDemoRet
       console.log("[Agnes] Fetching analysis data for material:", materialId);
       getComponentAnalysis(materialId, defaultWeights)
         .then((data) => {
-          console.log("[Agnes] Analysis data loaded:", data.recommendedSupplier?.name);
+          console.log("[Agnes] Analysis data loaded:", {
+            supplier: data.recommendedSupplier?.name,
+            score: data.recommendedSupplier?.score,
+            country: data.recommendedSupplier?.country,
+            alternatives: data.alternatives?.length,
+          });
           setAnalysisData(data);
         })
         .catch((err) => {
@@ -292,6 +297,14 @@ export function useAgnesDemo(options: UseAgnesDemoOptions = {}): UseAgnesDemoRet
         supplierCount: analysisData.supplierCount,
       } : undefined,
     } : null;
+
+    // Log what we're sending to help debug
+    console.log("[Agnes] Sending to AI with context:", {
+      hasPageContext: !!pageContext,
+      hasAnalysisData: !!analysisData,
+      supplierName: analysisData?.recommendedSupplier?.name,
+      materialId: pageContext?.materialId,
+    });
 
     // Use the main chat endpoint with isDemo flag - this uses the demo system prompt
     const response = await fetch("/api/chat/message", {

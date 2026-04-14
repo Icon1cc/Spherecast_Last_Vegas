@@ -164,6 +164,13 @@ export default async function handler(req, res) {
       const productLabel = pageContext.productName || `product ID ${pageContext.productId}`;
       const materialLabel = pageContext.materialName || `material ID ${pageContext.materialId}`;
 
+      // Log what we received
+      console.log("[Chat API] Page context received:", {
+        materialId: pageContext.materialId,
+        hasAnalysisData: !!pageContext.analysisData,
+        supplierName: pageContext.analysisData?.recommendedSupplier?.name,
+      });
+
       let analysisInfo = "";
 
       // Include actual analysis data if provided
